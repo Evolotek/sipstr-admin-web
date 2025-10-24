@@ -12,15 +12,16 @@ interface SidebarProps {
 
 const MODULES = [
   { id: "dashboard", label: "Dashboard", icon: "📊" },
-  { id: "users", label: "Users", icon: "👥" },
+//  { id: "users", label: "Users", icon: "👥" },
   { id: "orders", label: "Orders", icon: "📦" },
-  { id: "products", label: "Products", icon: "🛍️" },
-  { id: "brands", label: "Brands", icon: "🏷️" },
-  { id: "categories", label: "Categories", icon: "📂" },
-  { id: "stores", label: "Stores", icon: "🏪" },
-  { id: "roles", label: "Roles", icon: "🔐" },
-  { id: "top-picks", label: "Top Picks", icon: "⭐" },
-  { id: "reports", label: "Reports", icon: "📈" },
+  { id: "zones", label: "Zones", icon: "🛍️" }
+  // { id: "products", label: "Products", icon: "🛍️" },
+  // { id: "brands", label: "Brands", icon: "🏷️" },
+  // { id: "categories", label: "Categories", icon: "📂" },
+  // { id: "stores", label: "Stores", icon: "🏪" },
+  // { id: "roles", label: "Roles", icon: "🔐" },
+  // { id: "top-picks", label: "Top Picks", icon: "⭐" },
+  // { id: "reports", label: "Reports", icon: "📈" },
 ]
 
 export function Sidebar({ activeModule, onModuleChange, isOpen, onToggle, session, onLogout }: SidebarProps) {
@@ -36,8 +37,10 @@ export function Sidebar({ activeModule, onModuleChange, isOpen, onToggle, sessio
           transition: "width 0.3s ease",
           overflow: "hidden",
           borderRight: "1px solid #222",
+          position: "relative", // sidebar context
         }}
       >
+        {/* Sidebar header */}
         <div
           style={{
             padding: "20px",
@@ -45,6 +48,7 @@ export function Sidebar({ activeModule, onModuleChange, isOpen, onToggle, sessio
             minHeight: "60px",
             display: "flex",
             alignItems: "center",
+            justifyContent: "space-between", // title left, close button right
           }}
         >
           <h1
@@ -57,8 +61,24 @@ export function Sidebar({ activeModule, onModuleChange, isOpen, onToggle, sessio
           >
             Admin
           </h1>
+
+          {isOpen && (
+            <button
+              onClick={onToggle}
+              style={{
+                backgroundColor: "transparent",
+                border: "none",
+                color: "white",
+                fontSize: "20px",
+                cursor: "pointer",
+              }}
+            >
+              ✕
+            </button>
+          )}
         </div>
 
+        {/* Sidebar modules */}
         <nav
           style={{
             flex: 1,
@@ -85,14 +105,10 @@ export function Sidebar({ activeModule, onModuleChange, isOpen, onToggle, sessio
                 gap: "12px",
               }}
               onMouseEnter={(e) => {
-                if (activeModule !== module.id) {
-                  e.currentTarget.style.backgroundColor = "#444"
-                }
+                if (activeModule !== module.id) e.currentTarget.style.backgroundColor = "#444"
               }}
               onMouseLeave={(e) => {
-                if (activeModule !== module.id) {
-                  e.currentTarget.style.backgroundColor = "transparent"
-                }
+                if (activeModule !== module.id) e.currentTarget.style.backgroundColor = "transparent"
               }}
             >
               <span>{module.icon}</span>
@@ -101,6 +117,7 @@ export function Sidebar({ activeModule, onModuleChange, isOpen, onToggle, sessio
           ))}
         </nav>
 
+        {/* Logout */}
         <div
           style={{
             borderTop: "1px solid #444",
@@ -126,28 +143,7 @@ export function Sidebar({ activeModule, onModuleChange, isOpen, onToggle, sessio
         </div>
       </aside>
 
-      {isOpen && (
-        <button
-          onClick={onToggle}
-          style={{
-            position: "fixed",
-            top: "16px",
-            left: "16px",
-            zIndex: 1000,
-            backgroundColor: "#FF6600",
-            color: "white",
-            border: "none",
-            width: "40px",
-            height: "40px",
-            borderRadius: "4px",
-            cursor: "pointer",
-            fontSize: "20px",
-          }}
-        >
-          ✕
-        </button>
-      )}
-
+      {/* Hamburger menu when sidebar is closed */}
       {!isOpen && (
         <button
           onClick={onToggle}
@@ -169,6 +165,8 @@ export function Sidebar({ activeModule, onModuleChange, isOpen, onToggle, sessio
           ☰
         </button>
       )}
+
+
     </>
   )
 }

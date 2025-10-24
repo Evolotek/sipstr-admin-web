@@ -14,6 +14,7 @@ import{ StoresModule }from "./StoresModule"
 import{ RolesModule }from "./RolesModule"
 import{ TopPicksModule }from "./TopPicksModule"
 import{ ReportsModule }from "./ReportsModule"
+import DeliveryZonesPage from "./Delivery"
 
 interface DashboardLayoutProps {
   session: AdminSession
@@ -31,6 +32,7 @@ type ModuleType =
   | "roles"
   | "top-picks"
   | "reports"
+  |  "zones"
 
 export function DashboardLayout({ session, onLogout }: DashboardLayoutProps) {
   const [activeModule, setActiveModule] = useState<ModuleType>("dashboard")
@@ -42,6 +44,8 @@ export function DashboardLayout({ session, onLogout }: DashboardLayoutProps) {
         return <UsersModule />
       case "orders":
         return <OrdersModule />
+      case "zones":
+        return <DeliveryZonesPage />
       case "products":
         return <ProductsModule />
       case "brands":
@@ -85,6 +89,8 @@ export function DashboardLayout({ session, onLogout }: DashboardLayoutProps) {
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
+          marginLeft: sidebarOpen ? "0" : "50px", // <-- shift content right when sidebar open
+          transition: "margin-left 0.3s ease",      // smooth transition
         }}
       >
         <header

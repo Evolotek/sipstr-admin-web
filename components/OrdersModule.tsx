@@ -266,10 +266,10 @@ export function OrdersModule() {
     try {
       if (type === "full") {
         await apiService.refundOrderFull(orderId)
-        alert(`Full refund successfully processed for order ${orderId.slice(0,8)}.`)
+        alert(`Full refund successfully processed for order ${orderId}.`)
       } else if (itemIds) {
         await apiService.refundOrderPartial(orderId, itemIds)
-        alert(`Partial refund successfully processed for order ${orderId.slice(0,8)}.`)
+        alert(`Partial refund successfully processed for order ${orderId}.`)
       }
       if (selectedOrder) fetchOrderById(selectedOrder.orderUuid)
     } catch (err) {
@@ -303,7 +303,7 @@ export function OrdersModule() {
       {selectedOrder && (
         <div className="bg-white p-6 rounded-xl shadow-2xl mb-8 border border-gray-200">
           <div className="flex justify-between items-start mb-4 border-b pb-4">
-            <h3 className="text-xl font-bold text-gray-800">Found Order: <span className="text-orange-600">{selectedOrder.orderUuid.slice(0,8)}</span></h3>
+            <h3 className="text-xl font-bold text-gray-800">Found Order: <span className="text-orange-600">{selectedOrder.orderUuid}</span></h3>
             <button onClick={() => setSelectedOrder(null)} className="text-gray-500 hover:text-gray-700">✖</button>
           </div>
 
@@ -329,7 +329,7 @@ export function OrdersModule() {
         columns={["Order ID", "Customer", "Amount", "Status", "Payment", "Actions"]}
         data={orders.map(o => ({
           id: o.orderUuid,
-          cells: [o.orderUuid.slice(0,8), o.userName, `$${o.subtotal.toFixed(2)}`, o.orderStatus, o.paymentStatus],
+          cells: [o.orderUuid, o.userName, `$${o.subtotal.toFixed(2)}`, o.orderStatus, o.paymentStatus],
           actions: [
             { label: "View Details", onClick: () => setShowDetailsDialog(o) }
           ]
