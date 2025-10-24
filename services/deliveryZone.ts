@@ -1,4 +1,4 @@
-import { api } from './api'; // <-- updated: point to api.ts in same folder
+import { api } from './apiService'; // <-- updated: point to api.ts in same folder
 import { DeliveryZone, CreateDeliveryZoneRequest } from './types';
 
 export const deliveryZoneService = {

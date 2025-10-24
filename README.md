@@ -8,8 +8,11 @@ to start the server
  -->
 
 <!-- 
-please add admin bearer token in variable hardcoded token  in file apiService.ts.  
-since i haven't implemented refresh token yet 
+Right now sidebar contains only order and delivery zones for demo
+Please remove the comment out of the products in file components/Sidebar.tsx to test it.
+I have implemented the products crud and variant crud in products tab.
+
+For baseurl check file service/apiService.ts
 -->
 
 

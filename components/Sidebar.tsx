@@ -14,8 +14,8 @@ const MODULES = [
   { id: "dashboard", label: "Dashboard", icon: "📊" },
 //  { id: "users", label: "Users", icon: "👥" },
   { id: "orders", label: "Orders", icon: "📦" },
-  { id: "zones", label: "Zones", icon: "🛍️" }
-  // { id: "products", label: "Products", icon: "🛍️" },
+  { id: "zones", label: "Zones", icon: "🛍️" },
+//  { id: "products", label: "Products", icon: "🛍️" },
   // { id: "brands", label: "Brands", icon: "🏷️" },
   // { id: "categories", label: "Categories", icon: "📂" },
   // { id: "stores", label: "Stores", icon: "🏪" },

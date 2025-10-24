@@ -31,14 +31,56 @@ export interface Order {
   date: string;
 }
 
-export interface Product {
-  id: string;
-  uuid?: string;
-  name: string;
-  price: number;
-  category: string;
-  brand: string;
+export interface ProductPage {
+  content: Product[];
+  totalElements: number;
+  totalPages: number;
+  number: number; // current page
+  size: number;
 }
+
+
+export interface ProductVariant {
+  packageName?: string;
+  thumbnailImageUrl?: string;
+  fullSizeImageUrl?: string;
+  upc?: string;
+  unitPrice: number;
+  shelfLifeDays?: number;
+  alcoholByVolume?: number;
+  weightGrams?: number;
+  calories?: number;
+  carbs?: number;
+  ibuValue?: number;
+  sugars?: number;
+  addedSugars?: number;
+  dimensionsCm?: string;
+  storageInstructions?: string;
+  variantId: number;
+}
+
+export interface Product {
+  productName: string;
+  description: string;
+  brand: string;
+  categoryName: string;
+  taxCategory?: string;
+  isAlcoholic?: boolean;
+  isGlutenFree?: boolean;
+  isKosher?: boolean;
+  isWine?: boolean;
+  hasTobacco?: boolean;
+  hasCannabis?: boolean;
+  isReturnable?: boolean;
+  isPerishable?: boolean;
+  allergenInfo?: string;
+  nutritionalInfo?: string;
+  productId: number;
+  uuid: string;
+  variantsDTO?: ProductVariant[];
+}
+
+
 
 export interface Brand {
   id: string;

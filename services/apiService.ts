@@ -1,79 +1,90 @@
-const API_BASE_URL = "http://localhost:8080"
+import { Product, ProductPage } from "./types";
 
-// --- Token Management ---
-const getToken = (): string | null => typeof window !== "undefined" ? localStorage.getItem("auth_token") : null
-const setToken = (token: string): void => { if (typeof window !== "undefined") localStorage.setItem("auth_token", token) }
-const getRefreshToken = (): string | null => typeof window !== "undefined" ? localStorage.getItem("refresh_token") : null
-const setRefreshToken = (token: string): void => { if (typeof window !== "undefined") localStorage.setItem("refresh_token", token) }
-const clearToken = (): void => { if (typeof window !== "undefined") { localStorage.removeItem("auth_token"); localStorage.removeItem("refresh_token") } }
+export const API_BASE_URL = "http://localhost:8080";
+
+// --- Token Helpers ---
+export const getToken = (): string | null => typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+export const setToken = (token: string): void => { if (typeof window !== "undefined") localStorage.setItem("auth_token", token); };
+export const getRefreshToken = (): string | null => typeof window !== "undefined" ? localStorage.getItem("refresh_token") : null;
+export const setRefreshToken = (token: string): void => { if (typeof window !== "undefined") localStorage.setItem("refresh_token", token); };
+export const clearToken = (): void => { if (typeof window !== "undefined") { localStorage.removeItem("auth_token"); localStorage.removeItem("refresh_token"); } };
 
 // --- Refresh Token Handler ---
 async function refreshToken(): Promise<void> {
-  const refreshToken = getRefreshToken()
-  if (!refreshToken) throw new Error("No refresh token available")
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) throw new Error("No refresh token available");
 
   const response = await fetch(`${API_BASE_URL}/auth/refresh-token`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${refreshToken}`,
-    },
-  })
-    
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${refreshToken}` },
+  });
+
   if (!response.ok) {
-    clearToken()
-    throw new Error("Failed to refresh token")
+    clearToken();
+    throw new Error("Failed to refresh token");
   }
 
-  const data = await response.json() as { token: string; refreshToken: string; expiresIn: number }
-  setToken(data.token)
-  setRefreshToken(data.refreshToken)
+  const data = await response.json() as { token: string; refreshToken: string; expiresIn: number };
+  setToken(data.token);
+  setRefreshToken(data.refreshToken);
 }
 
-// --- API Request Helper ---
-async function apiCall<T>(method: string, endpoint: string, body?: unknown, retry = true): Promise<T> {
-  const headers: HeadersInit = { "Content-Type": "application/json" }
-  const token = getToken()
-  if (token) headers["Authorization"] = `Bearer ${token}`
+// --- Generic API Call ---
+export async function apiCall<T>(method: string, endpoint: string, body?: unknown, retry = true): Promise<T> {
+  const headers: HeadersInit = { "Content-Type": "application/json" };
+  const token = getToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const options: RequestInit = { method, headers }
-  if (body) options.body = JSON.stringify(body)
+  const options: RequestInit = { method, headers };
+  if (body !== undefined && body !== null) options.body = JSON.stringify(body);
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, options)
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
 
   if (!response.ok) {
     if (response.status === 401 && retry) {
       try {
-        await refreshToken()
-        return apiCall<T>(method, endpoint, body, false) // retry once
-      } catch (err) {
-        clearToken()
-        throw new Error("Unauthorized. Please login again.")
+        await refreshToken();
+        return apiCall<T>(method, endpoint, body, false);
+      } catch {
+        clearToken();
+        throw new Error("Unauthorized. Please login again.");
       }
     }
-    const error = await response.json().catch(() => ({}))
-    throw new Error(error.message || `API Error: ${response.status} on ${endpoint}`)
+    const parsed = await response.json().catch(() => null);
+    const msg = parsed?.message || parsed?.error || `API Error: ${response.status} ${response.statusText}`;
+    throw new Error(msg);
   }
 
-  if (response.status === 204 || response.headers.get("Content-Length") === "0") return {} as T
-  return response.json()
+  if (response.status === 204 || response.headers.get("content-length") === "0") return {} as T;
+  const text = await response.text();
+  if (!text) return {} as T;
+  try { return JSON.parse(text) as T; } 
+  catch { return (text as unknown) as T; }
 }
 
+// --- Small api wrapper ---
+export const api = {
+  get: <T = any>(endpoint: string) => apiCall<T>("GET", endpoint),
+  post: <T = any>(endpoint: string, body?: unknown) => apiCall<T>("POST", endpoint, body),
+  put: <T = any>(endpoint: string, body?: unknown) => apiCall<T>("PUT", endpoint, body),
+  patch: <T = any>(endpoint: string, body?: unknown) => apiCall<T>("PATCH", endpoint, body),
+  delete: <T = any>(endpoint: string, body?: unknown) => apiCall<T>("DELETE", endpoint, body),
+};
+
 // --- Interfaces ---
-interface LoginResponse { token: string; refreshToken: string; id: string; email: string; role: string }
-interface User { uuid?: string; id?: string; name: string; email: string; role: string }
-interface UserCreationData { name: string; email: string; password?: string; mobileNumber?: string; roleName: 'ADMIN' | 'SUPER_ADMIN' | 'STORE_OWNER' | 'USER'; }
-interface Order { id: string; shortID?: string; customer: string; amount: number; status: string; date: string }
-interface Product { id: string; uuid?: string; name: string; price: number; category: string; brand: string }
-interface Brand { id: string; name: string; description: string }
-interface Category { id: string; name: string; description: string }
-interface Store { id: string; name: string; location: string; phone: string }
-interface Role { id: string; name: string; permissions: string[] }
-interface TopPick { id: string; productId: string; productUuid?: string; productName: string; rank: number }
-interface Report { store: string; orders: number; revenue: number; date: string }
-interface DeliveryZone { zoneId:number; zoneName: string; baseDeliveryFee: number; perMileFee: number; minOrderAmount: number; estimatedPreparationTime: number; isRestricted: boolean; coordinates: number[][]; storeUuid: string }
-interface StoreItemDTO { storeUuid: string; storeName: string; storeAddress: string; storePhone: string; storeEmail?: string }
-interface OrderResponseDTO {
+export interface LoginResponse { token: string; refreshToken: string; id: string; email: string; role: string }
+export interface User { uuid?: string; id?: string; name: string; email: string; role: string }
+export interface UserCreationData { name: string; email: string; password?: string; mobileNumber?: string; roleName: 'ADMIN' | 'SUPER_ADMIN' | 'STORE_OWNER' | 'USER'; }
+export interface Order { id: string; shortID?: string; customer: string; amount: number; status: string; date: string }
+export interface Brand { id: string; name: string; description: string }
+export interface Category { id: string; name: string; description: string }
+export interface Store { id: string; name: string; location: string; phone: string }
+export interface Role { id: string; name: string; permissions: string[] }
+export interface TopPick { id: string; productId: string; productUuid?: string; productName: string; rank: number }
+export interface Report { store: string; orders: number; revenue: number; date: string }
+export interface DeliveryZone { zoneId:number; zoneName: string; baseDeliveryFee: number; perMileFee: number; minOrderAmount: number; estimatedPreparationTime: number; isRestricted: boolean; coordinates: number[][]; storeUuid: string }
+export interface StoreItemDTO { storeUuid: string; storeName: string; storeAddress: string; storePhone: string; storeEmail?: string }
+export interface OrderResponseDTO {
   orderUuid: string; userUuid: string; userName: string; userEmail: string; address: string; mobileNumber: string;
   orderStatus: "CREATED" | "PAYMENT_PENDING" | "ACCEPTED_BY_STORE" | "PARTIALLY_ACCEPTED_BY_STORE"
     | "SCHEDULED" | "READY_TO_PICKUP" | "CANCELLED_BY_CUSTOMER" | "OUT_FOR_DELIVERY"
@@ -92,84 +103,119 @@ interface OrderResponseDTO {
 
 // --- API Service ---
 export const apiService = {
-  // --- Authentication ---
-  async login(email: string, password: string): Promise<LoginResponse> {
-    const response = await apiCall<LoginResponse>("POST", "/auth/login", { identifier: email, password, roleName: "ADMIN" })
-    setToken(response.token)
-    setRefreshToken(response.refreshToken)
-    return response
+  // --- Auth ---
+  login: async (email: string, password: string) => {
+    const res = await apiCall<LoginResponse>("POST", "/auth/login", { identifier: email, password, roleName: "ADMIN" });
+    setToken(res.token);
+    setRefreshToken(res.refreshToken);
+    return res;
   },
-  logout(): void { clearToken() },
+  logout: () => clearToken(),
 
   // --- Users ---
-  async createAdmin(data: Omit<UserCreationData,'roleName'>): Promise<User> { return apiCall<User>("POST","/users",{...data, roleName:'ADMIN'}) },
-  async getUsers(): Promise<User[]> { return apiCall<User[]>("GET","/users") },
-  async createUser(data: Omit<UserCreationData,'roleName'>): Promise<User> { return apiCall<User>("POST","/users",{...data, roleName:'USER'}) },
-  async updateUser(uuid: string, data: Partial<User>): Promise<User> { return apiCall<User>("PATCH", `/users/${uuid}`, data) },
-  async deleteUser(uuid: string): Promise<void> { return apiCall<void>( "DELETE", `/users/${uuid}` ) },
+  createAdmin: async (data: Omit<UserCreationData,'roleName'>) => apiCall<User>("POST","/users",{...data, roleName:'ADMIN'}),
+  getUsers: async () => apiCall<User[]>("GET","/users"),
+  createUser: async (data: Omit<UserCreationData,'roleName'>) => apiCall<User>("POST","/users",{...data, roleName:'USER'}),
+  updateUser: async (uuid: string, data: Partial<User>) => apiCall<User>("PATCH", `/users/${uuid}`, data),
+  deleteUser: async (uuid: string) => apiCall<void>("DELETE", `/users/${uuid}`),
 
   // --- Orders ---
-  async getTrackedOrder(orderShortId: string): Promise<OrderResponseDTO> { 
-    const params = new URLSearchParams({ orderShortId })
-    return apiCall<OrderResponseDTO>("GET", `/orders/track?${params.toString()}`) 
-  },
-  async refundOrderFull(shortId: string): Promise<void> { return apiCall<void>("POST","/orders/refund",{orderShortId:shortId}) },
-  async refundOrderPartial(shortId: string, itemIds: number[]): Promise<void> { return apiCall<void>("POST","/orders/refund/partial",{orderShortId:shortId,itemIds}) },
-  async updateOrderStatus(id: string, status: string): Promise<Order> { return apiCall<Order>("PUT","/orders/update-status",{id,status}) },
+  getTrackedOrder: async (orderShortId: string) => apiCall<OrderResponseDTO>("GET", `/orders/track?${new URLSearchParams({ orderShortId })}`),
+  refundOrderFull: async (shortId: string) => apiCall<void>("POST","/orders/refund",{orderShortId:shortId}),
+  refundOrderPartial: async (shortId: string, itemIds: number[]) => apiCall<void>("POST","/orders/refund/partial",{orderShortId:shortId,itemIds}),
+  updateOrderStatus: async (id: string, status: string) => apiCall<Order>("PUT","/orders/update-status",{id,status}),
 
   // --- Products ---
-  async getProducts(): Promise<Product[]> { return apiCall<Product[]>("GET","/products") },
-  async getProductById(uuid: string): Promise<Product> { return apiCall<Product>("GET", `/products/${uuid}`) },
-  async createProduct(data: Partial<Product>): Promise<Product> { return apiCall<Product>("POST","/products",data) },
-  async updateProduct(uuid: string, data: Partial<Product>): Promise<Product> { return apiCall<Product>("PATCH", `/products/${uuid}`, data) },
-  async deleteProduct(uuid: string): Promise<void> { return apiCall<void>("DELETE", `/products/${uuid}`) },
+
+getProducts: async (): Promise<Product[]> => {
+  let allProducts: Product[] = [];
+  let page = 0;
+  const size = 50; // adjust page size as needed
+  let totalPages = 1;
+
+  do {
+    const raw = await apiCall<any>("GET", `/products?page=${page}&size=${size}`);
+    console.debug(`apiService.getProducts raw page ${page}:`, raw);
+
+    const content: Product[] = Array.isArray(raw) ? raw : raw?.content ?? [];
+    allProducts = allProducts.concat(content);
+
+    totalPages = raw?.totalPages ?? 1;
+    page++;
+  } while (page < totalPages);
+
+  return allProducts;
+},
+
+getProductById: async (uuid: string) => apiCall<Product>("GET", `/products/${uuid}`),
+createProduct: async (data: Partial<Product>) =>
+  apiCall<Product>("POST", "/products", {
+    productName: data.productName,
+    description: data.description ?? "",
+    brand: data.brand,
+    categoryName: data.categoryName,
+    taxCategory: data.taxCategory ?? "General",
+    isAlcoholic: false,
+    isGlutenFree: false,
+    isKosher: false,
+    isWine: false,
+    hasTobacco: false,
+    hasCannabis: false,
+    isReturnable: true,
+    isPerishable: false,
+    allergenInfo: "",
+    nutritionalInfo: ""
+  }),
+
+  updateProduct: async (uuid: string, data: Partial<Product>) => apiCall<Product>("PATCH", `/products/${uuid}`, data),
+  deleteProduct: async (uuid: string) => apiCall<void>("DELETE", `/products/${uuid}`),
 
   // --- Variants ---
-  async createVariant(productId: string, data: unknown): Promise<unknown> { return apiCall("POST", `/products/${productId}/variants`, data) },
-  async updateVariant(variantId: string, data: unknown): Promise<unknown> { return apiCall("PATCH", `/products/variants/${variantId}`, data) },
-  async deleteVariant(variantId: string): Promise<void> { return apiCall<void>("DELETE", `/products/variants/${variantId}`) },
+  createVariant: async (productId: number, data: unknown) => apiCall("POST", `/products/${productId}/variants`, data),
+  updateVariant: async (variantId: string, data: unknown) => apiCall("PATCH", `/products/variants/${variantId}`, data),
+  deleteVariant: async (variantId: string) => apiCall<void>("DELETE", `/products/variants/${variantId}`),
 
   // --- Brands ---
-  async getBrands(): Promise<Brand[]> { return apiCall<Brand[]>("GET","/brands") },
-  async createBrand(data: Partial<Brand>): Promise<Brand> { return apiCall<Brand>("POST","/brands",data) },
-  async updateBrand(id: string, data: Partial<Brand>): Promise<Brand> { return apiCall<Brand>("PATCH", `/brands/${id}`, data) },
-  async deleteBrand(id: string): Promise<void> { return apiCall<void>("DELETE", `/brands/${id}`) },
+  getBrands: async () => apiCall<Brand[]>("GET","/brands"),
+  createBrand: async (data: Partial<Brand>) => apiCall<Brand>("POST","/brands",data),
+  updateBrand: async (id: string, data: Partial<Brand>) => apiCall<Brand>("PATCH", `/brands/${id}`, data),
+  deleteBrand: async (id: string) => apiCall<void>("DELETE", `/brands/${id}`),
 
   // --- Categories ---
-  async getCategories(): Promise<Category[]> { return apiCall<Category[]>("GET","/categories") },
-  async createCategory(data: Partial<Category>): Promise<Category> { return apiCall<Category>("POST","/categories",data) },
-  async updateCategory(id: string, data: Partial<Category>): Promise<Category> { return apiCall<Category>("PATCH", `/categories/${id}`, data) },
-  async deleteCategory(id: string): Promise<void> { return apiCall<void>("DELETE", `/categories/${id}`) },
+  getCategories: async () => apiCall<Category[]>("GET","/categories"),
+  createCategory: async (data: Partial<Category>) => apiCall<Category>("POST","/categories",data),
+  updateCategory: async (id: string, data: Partial<Category>) => apiCall<Category>("PATCH", `/categories/${id}`, data),
+  deleteCategory: async (id: string) => apiCall<void>("DELETE", `/categories/${id}`),
 
   // --- Stores & Zones ---
-  async getStores(): Promise<Store[]> { return apiCall<Store[]>("GET","/stores") },
-  async createStore(data: Partial<Store>): Promise<Store> { return apiCall<Store>("POST","/stores",data) },
-  async createZone(data: DeliveryZone): Promise<DeliveryZone> { return apiCall<DeliveryZone>("POST","/vendor/zones",data) },
-  async updateZone(zoneId: string, data: Partial<DeliveryZone>): Promise<DeliveryZone> { return apiCall<DeliveryZone>("PATCH", `/stores/zones/${zoneId}`, data) },
-  async deleteZone(zoneId: string): Promise<void> { return apiCall<void>("DELETE", `/stores/zones/${zoneId}`) },
-  async getZonesByStoreUuid(storeUuid: string): Promise<DeliveryZone[]> { return apiCall<DeliveryZone[]>("GET", `/zones/${storeUuid}`) },
+  getStores: async () => apiCall<Store[]>("GET","/stores"),
+  createStore: async (data: Partial<Store>) => apiCall<Store>("POST","/stores",data),
+  createZone: async (data: DeliveryZone) => apiCall<DeliveryZone>("POST","/vendor/zones",data),
+  updateZone: async (zoneId: string, data: Partial<DeliveryZone>) => apiCall<DeliveryZone>("PATCH", `/stores/zones/${zoneId}`, data),
+  deleteZone: async (zoneId: string) => apiCall<void>("DELETE", `/stores/zones/${zoneId}`),
+  getZonesByStoreUuid: async (storeUuid: string) => apiCall<DeliveryZone[]>("GET", `/zones/${storeUuid}`),
 
   // --- Roles ---
-  async getRoles(): Promise<Role[]> { return apiCall<Role[]>("GET","/roles") },
-  async getRoleById(id: string): Promise<Role> { return apiCall<Role>("GET", `/roles/${id}`) },
-  async getRolePermissions(): Promise<unknown> { return apiCall("GET","/roles/permissions") },
-  async addRolePermission(roleId: string, permission: string): Promise<unknown> { return apiCall("POST", `/roles/${roleId}/permissions`, { permission }) },
-  async removeRolePermission(roleId: string, permission: string): Promise<void> { return apiCall<void>("DELETE", `/roles/${roleId}/permissions`, { permission }) },
-  async deleteRole(id: string): Promise<void> { return apiCall<void>("DELETE", `/roles/${id}`) },
+  getRoles: async () => apiCall<Role[]>("GET","/roles"),
+  getRoleById: async (id: string) => apiCall<Role>("GET", `/roles/${id}`),
+  getRolePermissions: async () => apiCall("GET","/roles/permissions"),
+  addRolePermission: async (roleId: string, permission: string) => apiCall("POST", `/roles/${roleId}/permissions`, { permission }),
+  removeRolePermission: async (roleId: string, permission: string) => apiCall<void>("DELETE", `/roles/${roleId}/permissions`, { permission }),
+  deleteRole: async (id: string) => apiCall<void>("DELETE", `/roles/${id}`),
 
   // --- Top Picks ---
-  async getTopPicks(): Promise<TopPick[]> { return apiCall<TopPick[]>("GET","/top-picks") },
-  async addTopPick(productUuid: string, rank: number): Promise<TopPick> { return apiCall<TopPick>("POST", `/top-picks/${productUuid}`, { rank }) },
-  async updateTopPick(productUuid: string, rank: number): Promise<TopPick> { return apiCall<TopPick>("PATCH", `/top-picks/${productUuid}`, { rank }) },
-  async removeTopPick(productUuid: string): Promise<void> { return apiCall<void>("DELETE", `/top-picks/${productUuid}`) },
+  getTopPicks: async () => apiCall<TopPick[]>("GET","/top-picks"),
+  addTopPick: async (productUuid: string, rank: number) => apiCall<TopPick>("POST", `/top-picks/${productUuid}`, { rank }),
+  updateTopPick: async (productUuid: string, rank: number) => apiCall<TopPick>("PATCH", `/top-picks/${productUuid}`, { rank }),
+  removeTopPick: async (productUuid: string) => apiCall<void>("DELETE", `/top-picks/${productUuid}`),
 
   // --- Reports ---
-  async getReports(storeId?: string, date?: string): Promise<Report[]> {
-    let endpoint = "/vendor/report"
-    const params = new URLSearchParams()
-    if (storeId) params.append("storeId", storeId)
-    if (date) params.append("date", date)
-    if (params.toString()) endpoint += `?${params.toString()}`
-    return apiCall<Report[]>("GET", endpoint)
+  getReports: async (storeId?: string, date?: string) => {
+    let endpoint = "/vendor/report";
+    const params = new URLSearchParams();
+    if (storeId) params.append("storeId", storeId);
+    if (date) params.append("date", date);
+    if (params.toString()) endpoint += `?${params.toString()}`;
+    return apiCall<Report[]>("GET", endpoint);
   }
-}
+};
