@@ -1,19 +1,18 @@
-<!-- 
+
 Open terminal in project directory and run 
 npm install
 
 once done run 
 npm run dev 
 to start the server
- -->
 
-<!-- 
+ 
 Right now sidebar contains only order and delivery zones for demo
 Please remove the comment out of the products in file components/Sidebar.tsx to test it.
 I have implemented the products crud and variant crud in products tab.
 
 For baseurl check file service/apiService.ts
--->
+
 
 
 
