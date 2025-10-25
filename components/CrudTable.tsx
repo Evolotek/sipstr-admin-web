@@ -44,7 +44,7 @@ export function CrudTable({ columns, data, loading }: CrudTableProps) {
             ))}
           </tr>
         </thead>
-        <tbody>
+        {/* <tbody>
           {loading ? (
             <tr>
               <td colSpan={columns.length} style={{ padding: "20px", textAlign: "center", color: "#666" }}>
@@ -99,7 +99,64 @@ export function CrudTable({ columns, data, loading }: CrudTableProps) {
               </tr>
             ))
           )}
-        </tbody>
+        </tbody> */}
+        <tbody>
+  {loading ? (
+    <tr key="loading">
+      <td colSpan={columns.length} style={{ padding: "20px", textAlign: "center", color: "#666" }}>
+        Loading...
+      </td>
+    </tr>
+  ) : data.length === 0 ? (
+    <tr key="empty">
+      <td colSpan={columns.length} style={{ padding: "20px", textAlign: "center", color: "#666" }}>
+        No data available
+      </td>
+    </tr>
+  ) : (
+    data.map((row) => (
+      <tr key={row.id} style={{ borderBottom: "1px solid #e0e0e0" }}>
+        {row.cells.map((cell, idx) => (
+          <td
+            key={idx}
+            style={{
+              padding: "12px",
+              fontSize: "14px",
+              color: "#333",
+            }}
+          >
+            {cell}
+          </td>
+        ))}
+        {row.actions && row.actions.length > 0 && (
+          <td style={{ padding: "12px", fontSize: "14px" }}>
+            <div style={{ display: "flex", gap: "8px" }}>
+              {row.actions.map((action, idx) => (
+                <button
+                  key={idx}
+                  onClick={action.onClick}
+                  style={{
+                    padding: "6px 12px",
+                    backgroundColor: "#FF6600",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "4px",
+                    cursor: "pointer",
+                    fontSize: "12px",
+                    fontWeight: "500",
+                  }}
+                >
+                  {action.label}
+                </button>
+              ))}
+            </div>
+          </td>
+        )}
+      </tr>
+    ))
+  )}
+</tbody>
+
       </table>
     </div>
   )

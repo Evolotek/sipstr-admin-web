@@ -1,193 +1,370 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { apiService } from "@/services/apiService"
 import { CrudTable } from "./CrudTable"
 
-export function BrandsModule() {
-  const [brands, setBrands] = useState<any[]>([])
+type ModuleType = "brands" | "categories" | "packages"
+
+export function BCPModule() {
+  const [selectedModule, setSelectedModule] = useState<ModuleType>("brands")
+  const [data, setData] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [showForm, setShowForm] = useState(false)
-  const [formData, setFormData] = useState({ name: "", description: "" })
-  const [editingId, setEditingId] = useState<string | null>(null)
+  const [formData, setFormData] = useState<any>({})
+  const [editingId, setEditingId] = useState<string | number | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    loadBrands()
-  }, [])
+  const [query, setQuery] = useState("")
+  const [debouncedQuery, setDebouncedQuery] = useState("")
 
-  const loadBrands = async () => {
+  useEffect(() => {
+    loadModuleData(selectedModule)
+  }, [selectedModule])
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query.trim()), 300)
+    return () => clearTimeout(t)
+  }, [query])
+
+  const loadModuleData = async (module: ModuleType) => {
     setLoading(true)
     setError(null)
     try {
-      const data = await apiService.getBrands()
-      setBrands(data)
+      let res: any[] = []
+      if (module === "brands") res = await apiService.getBrands()
+      else if (module === "categories") res = await apiService.getCategories()
+      else if (module === "packages") res = await apiService.getPackageUnits() // Add this API in apiService
+      setData(res)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load brands")
-      console.error("Failed to load brands:", err)
+      setError(err instanceof Error ? err.message : "Failed to load data")
+      console.error("Failed to load data:", err)
     } finally {
       setLoading(false)
     }
   }
 
-  const handleAdd = async () => {
-    if (!formData.name) return
-    try {
-      const newBrand = await apiService.createBrand(formData)
-      setBrands([...brands, newBrand])
-      setFormData({ name: "", description: "" })
-      setShowForm(false)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add brand")
-      console.error("Failed to add brand:", err)
+  const handleAddOrUpdate = async () => {
+    if (selectedModule === "brands") {
+      if (editingId) await apiService.updateBrand(editingId.toString(), formData)
+      else await apiService.createBrand(formData)
+    } else if (selectedModule === "categories") {
+      if (editingId) await apiService.updateCategory(editingId.toString(), formData)
+      else await apiService.createCategory(formData)
+    } else if (selectedModule === "packages") {
+      if (editingId) await apiService.updatePackageUnit(editingId as number, formData)
+      else await apiService.createPackageUnit(formData)
+      
     }
+    setShowForm(false)
+    setEditingId(null)
+    setFormData({})
+    loadModuleData(selectedModule)
   }
 
-  const handleUpdate = async () => {
-    if (!editingId) return
-    try {
-      const updated = await apiService.updateBrand(editingId, formData)
-      setBrands(brands.map((b) => (b.id === editingId ? updated : b)))
-      setFormData({ name: "", description: "" })
-      setEditingId(null)
-      setShowForm(false)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update brand")
-      console.error("Failed to update brand:", err)
-    }
-  }
-
-  const handleDelete = async (id: string) => {
-    try {
-      await apiService.deleteBrand(id)
-      setBrands(brands.filter((b) => b.id !== id))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete brand")
-      console.error("Failed to delete brand:", err)
-    }
-  }
-
-  const handleEdit = (brand: any) => {
-    setFormData({ name: brand.name, description: brand.description })
-    setEditingId(brand.id)
+  const handleEdit = (item: any) => {
+    setFormData(item)
+    setEditingId(item.id ?? item.categoryId ?? item.packageId)
     setShowForm(true)
   }
 
+  const handleDelete = async (item: any) => {
+    try {
+      if (selectedModule === "brands") await apiService.deleteBrand(item.id)
+      else if (selectedModule === "categories") await apiService.deleteCategory(item.categoryId)
+      else if (selectedModule === "packages") await apiService.deletePackageUnit(item.packageId)
+      loadModuleData(selectedModule)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete")
+      console.error("Delete error:", err)
+    }
+  }
+
+  const filteredData = useMemo(() => {
+    if (!debouncedQuery) return data
+    const q = debouncedQuery.toLowerCase()
+    return data.filter((item) => {
+      const name =
+        item.name ??
+        item.categoryName ??
+        item.packageName ??
+        ""
+      const id = item.id ?? item.categoryId ?? item.packageId ?? ""
+      return name.toLowerCase().includes(q) || id.toString().includes(q)
+    })
+  }, [data, debouncedQuery])
+
+  const tableColumns =
+    selectedModule === "brands"
+      ? ["ID", "Name", "Actions"]
+      : selectedModule === "categories"
+      ? ["ID", "Category Name", "Description", "Actions"]
+      : ["ID", "Package Name", "Type", "Description", "Actions"]
+
+  const tableData = filteredData.map((item) => {
+    const id = item.id ?? item.categoryId ?? item.package_id
+    let cells: any[] = []
+
+    if (selectedModule === "brands") cells = [item.id, item.name]
+    else if (selectedModule === "categories")
+      cells = [item.categoryId, item.categoryName, item.description]
+    else if (selectedModule === "packages")
+      cells = [item.packageId, item.packageName, item.packageType, item.description]
+
+    return {
+      id,
+      cells,
+      actions: [
+        { label: "Edit", onClick: () => handleEdit(item) },
+        { label: "Delete", onClick: () => handleDelete(item) },
+      ],
+    }
+  })
+
   return (
     <div>
-      <div style={{ marginBottom: "20px" }}>
-        <button
-          onClick={() => {
-            setShowForm(!showForm)
-            if (showForm) {
-              setEditingId(null)
-              setFormData({ name: "", description: "" })
-            }
-          }}
-          style={{
-            padding: "10px 16px",
-            backgroundColor: "#FF6600",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            cursor: "pointer",
-            fontWeight: "500",
-          }}
-        >
-          {showForm ? "Cancel" : "+ Add Brand"}
-        </button>
-      </div>
+      {/* Module selector + search + add */}
+      {/* Module selector + search + add */}
+<div
+  style={{
+    display: "flex",
+    gap: 12,
+    flexWrap: "wrap",
+    marginBottom: 16,
+    alignItems: "center",
+    padding: 12,
+    background: "#fff",
+    borderRadius: 10,
+    boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+  }}
+>
+  {/* Module Selector */}
+  <select
+    value={selectedModule}
+    onChange={(e) => setSelectedModule(e.target.value as ModuleType)}
+    style={{
+      padding: "10px 14px",
+      border: "1px solid #ccc",
+      borderRadius: 6,
+      background: "#fff",
+      outline: "none",
+      cursor: "pointer",
+      transition: "border-color 0.2s, box-shadow 0.2s",
+    }}
+    onFocus={(e) => (e.currentTarget.style.borderColor = "#FF6600")}
+    onBlur={(e) => (e.currentTarget.style.borderColor = "#ccc")}
+  >
+    <option value="brands">Brands</option>
+    <option value="categories">Categories</option>
+    <option value="packages">Packages</option>
+  </select>
 
-      {error && (
-        <div
-          style={{
-            backgroundColor: "#fee",
-            color: "#c33",
-            padding: "12px",
-            borderRadius: "4px",
-            marginBottom: "20px",
-            fontSize: "14px",
-          }}
-        >
-          {error}
-        </div>
-      )}
+  {/* Search Box */}
+  <input
+    value={query}
+    onChange={(e) => setQuery(e.target.value)}
+    placeholder="Search..."
+    style={{
+      padding: "10px 14px",
+      border: "1px solid #ccc",
+      borderRadius: 6,
+      minWidth: 220,
+      outline: "none",
+      transition: "border-color 0.2s, box-shadow 0.2s",
+    }}
+    onFocus={(e) => {
+      e.currentTarget.style.borderColor = "#FF6600"
+      e.currentTarget.style.boxShadow = "0 0 5px rgba(255,102,0,0.3)"
+    }}
+    onBlur={(e) => {
+      e.currentTarget.style.borderColor = "#ccc"
+      e.currentTarget.style.boxShadow = "none"
+    }}
+  />
 
+  {/* Add+ Button */}
+  <button
+    onClick={() => {
+      setShowForm(!showForm)
+      if (showForm) {
+        setFormData({})
+        setEditingId(null)
+      }
+    }}
+    style={{
+      padding: "10px 20px",
+      backgroundColor: "#FF6600",
+      color: "#fff",
+      border: "none",
+      borderRadius: 6,
+      cursor: "pointer",
+      fontWeight: 500,
+      transition: "background 0.2s, transform 0.1s",
+    }}
+    onMouseEnter={(e) => (e.currentTarget.style.background = "#e65c00")}
+    onMouseLeave={(e) => (e.currentTarget.style.background = "#FF6600")}
+    onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.95)")}
+    onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+  >
+    {showForm ? "Cancel" : "+ Add"}
+  </button>
+</div>
+
+
+      {error && <div style={{ color: "#c33", marginBottom: 12 }}>{error}</div>}
+
+      {/* Add/Edit Form */}
       {showForm && (
-        <div
+  <div
+    style={{
+      marginBottom: 20,
+      padding: 24,
+      background: "#fff",
+      borderRadius: 10,
+      boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+      maxWidth: 500,
+    }}
+  >
+    {selectedModule === "brands" && (
+      <div style={{ marginBottom: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+        <label style={{ fontWeight: 500 }}>Brand Name</label>
+        <input
+          value={formData.name || ""}
+          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
           style={{
-            backgroundColor: "white",
-            padding: "20px",
-            borderRadius: "8px",
-            marginBottom: "20px",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+            padding: "10px 12px",
+            border: "1px solid #ccc",
+            borderRadius: 6,
+            outline: "none",
+            transition: "border-color 0.2s",
           }}
-        >
-          <div style={{ marginBottom: "15px" }}>
-            <label style={{ display: "block", marginBottom: "5px", fontSize: "14px", fontWeight: "500" }}>
-              Brand Name
-            </label>
-            <input
-              type="text"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              style={{
-                width: "100%",
-                padding: "8px 12px",
-                border: "1px solid #ddd",
-                borderRadius: "4px",
-                fontSize: "14px",
-                boxSizing: "border-box",
-              }}
-            />
-          </div>
-          <div style={{ marginBottom: "15px" }}>
-            <label style={{ display: "block", marginBottom: "5px", fontSize: "14px", fontWeight: "500" }}>
-              Description
-            </label>
-            <textarea
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              style={{
-                width: "100%",
-                padding: "8px 12px",
-                border: "1px solid #ddd",
-                borderRadius: "4px",
-                fontSize: "14px",
-                boxSizing: "border-box",
-                minHeight: "80px",
-              }}
-            />
-          </div>
-          <button
-            onClick={editingId ? handleUpdate : handleAdd}
-            style={{
-              padding: "10px 16px",
-              backgroundColor: "#FF6600",
-              color: "white",
-              border: "none",
-              borderRadius: "4px",
-              cursor: "pointer",
-              fontWeight: "500",
-            }}
-          >
-            {editingId ? "Update" : "Add"} Brand
-          </button>
-        </div>
-      )}
+          onFocus={(e) => (e.currentTarget.style.borderColor = "#FF6600")}
+          onBlur={(e) => (e.currentTarget.style.borderColor = "#ccc")}
+        />
+      </div>
+    )}
 
-      <CrudTable
-        columns={["ID", "Name", "Description", "Actions"]}
-        data={brands.map((b) => ({
-          id: b.id,
-          cells: [b.id.slice(0, 8), b.name, b.description.slice(0, 50)],
-          actions: [
-            { label: "Edit", onClick: () => handleEdit(b) },
-            { label: "Delete", onClick: () => handleDelete(b.id) },
-          ],
-        }))}
-        loading={loading}
-      />
+    {selectedModule === "categories" && (
+      <>
+        <div style={{ marginBottom: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+          <label style={{ fontWeight: 500 }}>Category Name</label>
+          <input
+            value={formData.categoryName || ""}
+            onChange={(e) => setFormData({ ...formData, categoryName: e.target.value })}
+            style={{
+              padding: "10px 12px",
+              border: "1px solid #ccc",
+              borderRadius: 6,
+              outline: "none",
+              transition: "border-color 0.2s",
+            }}
+            onFocus={(e) => (e.currentTarget.style.borderColor = "#FF6600")}
+            onBlur={(e) => (e.currentTarget.style.borderColor = "#ccc")}
+          />
+        </div>
+        <div style={{ marginBottom: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+          <label style={{ fontWeight: 500 }}>Description</label>
+          <input
+            value={formData.description || ""}
+            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            style={{
+              padding: "10px 12px",
+              border: "1px solid #ccc",
+              borderRadius: 6,
+              outline: "none",
+              transition: "border-color 0.2s",
+            }}
+            onFocus={(e) => (e.currentTarget.style.borderColor = "#FF6600")}
+            onBlur={(e) => (e.currentTarget.style.borderColor = "#ccc")}
+          />
+        </div>
+      </>
+    )}
+
+    {selectedModule === "packages" && (
+      <>
+        <div style={{ marginBottom: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+          <label style={{ fontWeight: 500 }}>Package Name</label>
+          <input
+            value={formData.packageName || ""}
+            onChange={(e) => setFormData({ ...formData, packageName: e.target.value })}
+            style={{
+              padding: "10px 12px",
+              border: "1px solid #ccc",
+              borderRadius: 6,
+              outline: "none",
+              transition: "border-color 0.2s",
+            }}
+            onFocus={(e) => (e.currentTarget.style.borderColor = "#FF6600")}
+            onBlur={(e) => (e.currentTarget.style.borderColor = "#ccc")}
+          />
+        </div>
+        <div style={{ marginBottom: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+          <label style={{ fontWeight: 500 }}>Description</label>
+          <input
+            value={formData.description || ""}
+            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            style={{
+              padding: "10px 12px",
+              border: "1px solid #ccc",
+              borderRadius: 6,
+              outline: "none",
+              transition: "border-color 0.2s",
+            }}
+            onFocus={(e) => (e.currentTarget.style.borderColor = "#FF6600")}
+            onBlur={(e) => (e.currentTarget.style.borderColor = "#ccc")}
+          />
+        </div>
+        <div style={{ marginBottom: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+          <label style={{ fontWeight: 500 }}>Package Type</label>
+          <select
+            value={formData.packageType || ""}
+            onChange={(e) => setFormData({ ...formData, packageType: e.target.value })}
+            style={{
+              padding: "10px 12px",
+              border: "1px solid #ccc",
+              borderRadius: 6,
+              outline: "none",
+              transition: "border-color 0.2s",
+              background: "#fff",
+            }}
+            onFocus={(e) => (e.currentTarget.style.borderColor = "#FF6600")}
+            onBlur={(e) => (e.currentTarget.style.borderColor = "#ccc")}
+          >
+            <option value="CAN">CAN</option>
+            <option value="GLASS_BOTTLE">GLASS_BOTTLE</option>
+            <option value="KEG">KEG</option>
+            <option value="PLASTIC_BOTTLE">PLASTIC_BOTTLE</option>
+            <option value="TETRA_PAK">TETRA_PAK</option>
+            <option value="OTHER">OTHER</option>
+          </select>
+        </div>
+      </>
+    )}
+
+    <button
+      onClick={handleAddOrUpdate}
+      style={{
+        marginTop: 16,
+        background: "#FF6600",
+        color: "#fff",
+        padding: "10px 18px",
+        border: "none",
+        borderRadius: 6,
+        cursor: "pointer",
+        fontWeight: 500,
+        transition: "background 0.2s",
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = "#e65c00")}
+      onMouseLeave={(e) => (e.currentTarget.style.background = "#FF6600")}
+    >
+      {editingId ? "Update" : "Add"} {selectedModule.slice(0, -1)}
+    </button>
+  </div>
+)}
+
+
+      <CrudTable columns={tableColumns} data={tableData} loading={loading} />
     </div>
   )
 }

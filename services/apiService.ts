@@ -1,5 +1,5 @@
 // src/services/api.ts (updated)
-import { Product, ProductPage } from "./types";
+import { Product, PackageUnit } from "./types";
 
 export const API_BASE_URL = "http://localhost:8080";
 
@@ -99,7 +99,7 @@ export interface LoginResponse { token: string; refreshToken: string; id: string
 export interface User { uuid?: string; id?: string; name: string; email: string; role: string }
 export interface UserCreationData { name: string; email: string; password?: string; mobileNumber?: string; roleName: 'ADMIN' | 'SUPER_ADMIN' | 'STORE_OWNER' | 'USER'; }
 export interface Order { id: string; shortID?: string; customer: string; amount: number; status: string; date: string }
-export interface Brand { id: string; name: string; description: string }
+export interface Brand { id: string; name: string }
 export interface Category { id: string; name: string; description: string }
 export interface Store { id: string; name: string; location: string; phone: string }
 export interface Role { id: string; name: string; permissions: string[] }
@@ -206,8 +206,30 @@ export const apiService = {
   // --- Categories ---
   getCategories: async () => apiCall<Category[]>("GET","/categories"),
   createCategory: async (data: Partial<Category>) => apiCall<Category>("POST","/categories",data),
-  updateCategory: async (id: string, data: Partial<Category>) => apiCall<Category>("PATCH", `/categories/${id}`, data),
+  updateCategory: async (id: string, data: Partial<Category>) => apiCall<Category>("PUT", `/categories/${id}`, data),
   deleteCategory: async (id: string) => apiCall<void>("DELETE", `/categories/${id}`),
+
+  // --- Package-Unit
+  getPackageUnits: async (page = 0, size = 50): Promise<PackageUnit[]> => {
+    let all: PackageUnit[] = []
+    let currentPage = page
+    let totalPages = 1
+
+    do {
+      const res = await apiCall<{ content: PackageUnit[]; totalPages: number }>(
+        "GET",
+        `/package-units?page=${currentPage}&size=${size}`
+      )
+      all = all.concat(res.content)
+      totalPages = res.totalPages
+      currentPage++
+    } while (currentPage < totalPages)
+
+    return all
+  },
+  createPackageUnit: async (data: Partial<PackageUnit>) => apiCall<PackageUnit>("POST", "/package-units", data),
+  updatePackageUnit: async (id: number, data: Partial<PackageUnit>) => apiCall<PackageUnit>("PUT", `/package-units/${id}`, data),
+  deletePackageUnit: async (id: number) => apiCall<void>("DELETE", `/package-units/${id}`),
 
   // --- Stores & Zones ---
   getStores: async () => apiCall<Store[]>("GET","/stores"),

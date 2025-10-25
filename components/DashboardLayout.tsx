@@ -8,7 +8,7 @@ import { Sidebar } from "./Sidebar" // Assuming Sidebar is a named export for st
 import{ UsersModule } from "./UsersModule"
 import{ OrdersModule }from "./OrdersModule"
 import ProductsModule from "./ProductsModule"
-import{ BrandsModule }from "./BrandsModule"
+import{ BCPModule }from "./BrandsModule"
 import{ CategoriesModule }from "./CategoriesModule"
 import{ StoresModule }from "./StoresModule"
 import{ RolesModule }from "./RolesModule"
@@ -49,7 +49,7 @@ export function DashboardLayout({ session, onLogout }: DashboardLayoutProps) {
       case "products":
         return <ProductsModule />
       case "brands":
-        return <BrandsModule />
+        return <BCPModule />
       case "categories":
         return <CategoriesModule />
       case "stores":

@@ -89,10 +89,16 @@ export interface Brand {
 }
 
 export interface Category {
-  id: string;
-  name: string;
-  description: string;
+  id?: string;                 // maps to backend ID if needed
+  categoryName: string;
+  description?: string;
+  imageUrl?: string;
+  displayOrder?: number;
+  isTaxable?: boolean;
+  isActive?: boolean;
+  parentCategoryId?: number | null;
 }
+
 
 export interface Store {
   id: string;
@@ -203,4 +209,11 @@ export interface OrderResponseDTO {
   clientSecret?: string;
   deliveryOtp?: string;
   stores: StoreItemDTO[];
+}
+
+export interface PackageUnit {
+  packageId: number;
+  packageName: string;
+  description?: string;
+  packageType: "CAN" | "GLASS_BOTTLE" | "KEG" | "PLASTIC_BOTTLE" | "TETRA_PAK" | "OTHER";
 }
