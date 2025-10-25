@@ -1,3 +1,4 @@
+// src/services/api.ts (updated)
 import { Product, ProductPage } from "./types";
 
 export const API_BASE_URL = "http://localhost:8080";
@@ -9,6 +10,13 @@ export const getRefreshToken = (): string | null => typeof window !== "undefined
 export const setRefreshToken = (token: string): void => { if (typeof window !== "undefined") localStorage.setItem("refresh_token", token); };
 export const clearToken = (): void => { if (typeof window !== "undefined") { localStorage.removeItem("auth_token"); localStorage.removeItem("refresh_token"); } };
 
+// helper to detect auth/public endpoints where access token should NOT be sent
+const isAuthEndpoint = (endpoint: string) => {
+  // normalize (endpoint might include querystring) and check the path start
+  const path = endpoint.split('?')[0].toLowerCase();
+  return path === '/auth/login' || path === '/auth/refresh-token' || path.startsWith('/auth/');
+};
+
 // --- Refresh Token Handler ---
 async function refreshToken(): Promise<void> {
   const refreshToken = getRefreshToken();
@@ -17,6 +25,8 @@ async function refreshToken(): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/auth/refresh-token`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${refreshToken}` },
+    // If your backend expects the refresh token in the body instead, change to:
+    // body: JSON.stringify({ refreshToken })
   });
 
   if (!response.ok) {
@@ -30,10 +40,20 @@ async function refreshToken(): Promise<void> {
 }
 
 // --- Generic API Call ---
+// note: this function will not attach the access token for auth endpoints (login/refresh)
 export async function apiCall<T>(method: string, endpoint: string, body?: unknown, retry = true): Promise<T> {
   const headers: HeadersInit = { "Content-Type": "application/json" };
-  const token = getToken();
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  // Only attach the access token for non-auth endpoints
+  try {
+    if (!isAuthEndpoint(endpoint)) {
+      const token = getToken();
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+    }
+  } catch (err) {
+    // Defensive: localStorage might throw in some environments; ignore and proceed
+    console.debug("apiCall: token read error", err);
+  }
 
   const options: RequestInit = { method, headers };
   if (body !== undefined && body !== null) options.body = JSON.stringify(body);
@@ -42,19 +62,22 @@ export async function apiCall<T>(method: string, endpoint: string, body?: unknow
 
   if (!response.ok) {
     if (response.status === 401 && retry) {
+      // attempt refresh only when the call was protected (non-auth) — but safe to try anyway
       try {
         await refreshToken();
         return apiCall<T>(method, endpoint, body, false);
-      } catch {
+      } catch (refreshErr) {
         clearToken();
         throw new Error("Unauthorized. Please login again.");
       }
     }
+
     const parsed = await response.json().catch(() => null);
     const msg = parsed?.message || parsed?.error || `API Error: ${response.status} ${response.statusText}`;
     throw new Error(msg);
   }
 
+  // no content
   if (response.status === 204 || response.headers.get("content-length") === "0") return {} as T;
   const text = await response.text();
   if (!text) return {} as T;
@@ -126,46 +149,45 @@ export const apiService = {
   updateOrderStatus: async (id: string, status: string) => apiCall<Order>("PUT","/orders/update-status",{id,status}),
 
   // --- Products ---
+  getProducts: async (): Promise<Product[]> => {
+    let allProducts: Product[] = [];
+    let page = 0;
+    const size = 50; // adjust page size as needed
+    let totalPages = 1;
 
-getProducts: async (): Promise<Product[]> => {
-  let allProducts: Product[] = [];
-  let page = 0;
-  const size = 50; // adjust page size as needed
-  let totalPages = 1;
+    do {
+      const raw = await apiCall<any>("GET", `/products?page=${page}&size=${size}`);
+      console.debug(`apiService.getProducts raw page ${page}:`, raw);
 
-  do {
-    const raw = await apiCall<any>("GET", `/products?page=${page}&size=${size}`);
-    console.debug(`apiService.getProducts raw page ${page}:`, raw);
+      const content: Product[] = Array.isArray(raw) ? raw : raw?.content ?? [];
+      allProducts = allProducts.concat(content);
 
-    const content: Product[] = Array.isArray(raw) ? raw : raw?.content ?? [];
-    allProducts = allProducts.concat(content);
+      totalPages = raw?.totalPages ?? 1;
+      page++;
+    } while (page < totalPages);
 
-    totalPages = raw?.totalPages ?? 1;
-    page++;
-  } while (page < totalPages);
+    return allProducts;
+  },
 
-  return allProducts;
-},
-
-getProductById: async (uuid: string) => apiCall<Product>("GET", `/products/${uuid}`),
-createProduct: async (data: Partial<Product>) =>
-  apiCall<Product>("POST", "/products", {
-    productName: data.productName,
-    description: data.description ?? "",
-    brand: data.brand,
-    categoryName: data.categoryName,
-    taxCategory: data.taxCategory ?? "General",
-    isAlcoholic: false,
-    isGlutenFree: false,
-    isKosher: false,
-    isWine: false,
-    hasTobacco: false,
-    hasCannabis: false,
-    isReturnable: true,
-    isPerishable: false,
-    allergenInfo: "",
-    nutritionalInfo: ""
-  }),
+  getProductById: async (uuid: string) => apiCall<Product>("GET", `/products/${uuid}`),
+  createProduct: async (data: Partial<Product>) =>
+    apiCall<Product>("POST", "/products", {
+      productName: data.productName,
+      description: data.description ?? "",
+      brand: data.brand,
+      categoryName: data.categoryName,
+      taxCategory: data.taxCategory ?? "General",
+      isAlcoholic: false,
+      isGlutenFree: false,
+      isKosher: false,
+      isWine: false,
+      hasTobacco: false,
+      hasCannabis: false,
+      isReturnable: true,
+      isPerishable: false,
+      allergenInfo: "",
+      nutritionalInfo: ""
+    }),
 
   updateProduct: async (uuid: string, data: Partial<Product>) => apiCall<Product>("PATCH", `/products/${uuid}`, data),
   deleteProduct: async (uuid: string) => apiCall<void>("DELETE", `/products/${uuid}`),
@@ -178,7 +200,7 @@ createProduct: async (data: Partial<Product>) =>
   // --- Brands ---
   getBrands: async () => apiCall<Brand[]>("GET","/brands"),
   createBrand: async (data: Partial<Brand>) => apiCall<Brand>("POST","/brands",data),
-  updateBrand: async (id: string, data: Partial<Brand>) => apiCall<Brand>("PATCH", `/brands/${id}`, data),
+  updateBrand: async (id: string, data: Partial<Brand>) => apiCall("PATCH", `/brands/${id}`, data),
   deleteBrand: async (id: string) => apiCall<void>("DELETE", `/brands/${id}`),
 
   // --- Categories ---
