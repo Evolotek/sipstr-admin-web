@@ -110,6 +110,13 @@ export interface Store {
 export interface Role {
   id: string;
   name: string;
+  description:string;
+  permissions: string[];
+}
+
+export interface RolePermissionsResponse {
+  roleId: number;
+  roleName: string;
   permissions: string[];
 }
 

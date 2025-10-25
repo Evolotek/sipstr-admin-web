@@ -1,5 +1,5 @@
 // src/services/api.ts (updated)
-import { Product, PackageUnit } from "./types";
+import { Product, PackageUnit, Role } from "./types";
 
 export const API_BASE_URL = "http://localhost:8080";
 
@@ -102,7 +102,6 @@ export interface Order { id: string; shortID?: string; customer: string; amount:
 export interface Brand { id: string; name: string }
 export interface Category { id: string; name: string; description: string }
 export interface Store { id: string; name: string; location: string; phone: string }
-export interface Role { id: string; name: string; permissions: string[] }
 export interface TopPick { id: string; productId: string; productUuid?: string; productName: string; rank: number }
 export interface Report { store: string; orders: number; revenue: number; date: string }
 export interface DeliveryZone { zoneId:number; zoneName: string; baseDeliveryFee: number; perMileFee: number; minOrderAmount: number; estimatedPreparationTime: number; isRestricted: boolean; coordinates: number[][]; storeUuid: string }
@@ -242,10 +241,16 @@ export const apiService = {
   // --- Roles ---
   getRoles: async () => apiCall<Role[]>("GET","/roles"),
   getRoleById: async (id: string) => apiCall<Role>("GET", `/roles/${id}`),
+  addRole: async (role: { name: string; description: string; permissions: string[] }) => apiCall<Role>("POST", "/roles", role),
+  updateRole: async (id: string, role: { name: string; description: string; permissions: string[] }) => apiCall<Role>("PUT", `/roles/${id}`, role),
+
+  deleteRole: async (id: string) => apiCall<void>("DELETE", `/roles/${id}`),
+
+  //Role-permission
   getRolePermissions: async () => apiCall("GET","/roles/permissions"),
   addRolePermission: async (roleId: string, permission: string) => apiCall("POST", `/roles/${roleId}/permissions`, { permission }),
-  removeRolePermission: async (roleId: string, permission: string) => apiCall<void>("DELETE", `/roles/${roleId}/permissions`, { permission }),
-  deleteRole: async (id: string) => apiCall<void>("DELETE", `/roles/${id}`),
+  removeRolePermission: async (roleId: string, permission: string[]) => apiCall<void>("DELETE", `/roles/${roleId}/permissions`, { permission }),
+  
 
   // --- Top Picks ---
   getTopPicks: async () => apiCall<TopPick[]>("GET","/top-picks"),
