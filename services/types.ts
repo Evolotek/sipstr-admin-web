@@ -7,20 +7,16 @@ export interface LoginResponse {
 }
 
 export interface User {
+  id?: number;
   uuid?: string;
-  id?: string;
-  name: string;
-  email: string;
-  role: string;
+  email: string
+  password?: string
+  fullName: string
+  mobileNumber?: string
+  dob?: string // Use ISO string when sending to backend (e.g., "2003-05-21")
+  roleName: "CUSTOMER" | "STORE_OWNER" | "ADMIN"
 }
 
-export interface UserCreationData {
-  name: string;
-  email: string;
-  password?: string;
-  mobileNumber?: string;
-  roleName: 'ADMIN' | 'SUPER_ADMIN' | 'STORE_OWNER' | 'USER';
-}
 
 export interface Order {
   id: string;
@@ -101,10 +97,25 @@ export interface Category {
 
 
 export interface Store {
-  id: string;
-  name: string;
-  location: string;
-  phone: string;
+  uuid: string;
+  storeName: string;
+  corporationName?: string;
+  ein?: number;
+  licenseNumber?: string;
+  liquorLicenseUrl?: string;
+  description?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  deliveryRadiusKm?: number;
+  minimumOrderAmount?: number;
+  averagePreparationTime?: number;
+  isCurrentlyAcceptingOrders?: boolean;
+  rating?: number;
+  taxRate?: number;
+  commissionRate?: number;
+  isActive?: boolean;
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface Role {
@@ -121,12 +132,16 @@ export interface RolePermissionsResponse {
 }
 
 export interface TopPick {
-  id: string;
-  productId: string;
-  productUuid?: string;
-  productName: string;
-  rank: number;
+  id: number
+  productId: number
+  uuid?: string
+  productName: string
+  rankingScore: number
+  isFeatured: boolean
+  updatedAt?: string
+  thumbnailImageUrl?: string
 }
+
 
 export interface Report {
   store: string;
@@ -223,4 +238,90 @@ export interface PackageUnit {
   packageName: string;
   description?: string;
   packageType: "CAN" | "GLASS_BOTTLE" | "KEG" | "PLASTIC_BOTTLE" | "TETRA_PAK" | "OTHER";
+}
+
+export interface StoreReportItemDTO {
+  storeName: string;
+  orderUuid: string;
+  subtotal: string; // backend BigDecimal -> string in JSON
+  deliveryFee: string;
+  checkoutBagFee: string;
+  bottleDepositFee: string;
+  tax: string;
+  tip: string;
+  storeTotal: string;
+  refundedAmount: string;
+  paymentGatewayFee: string;
+  withheldTax: string;
+  targetedPromotion: string;
+  netTotal: string;
+  storeStatus: string; // OrderStatusEnum as string
+}
+
+export interface PageResponse<T> {
+  content: T[];
+  totalElements: number;
+  totalPages: number;
+  number: number; // current page (0-indexed)
+  size: number;
+}
+
+export interface OfferDetailResponse {
+  offerId: number;
+  storeId: number;
+  couponId: number;
+  couponCode: string;
+  users: Array<{
+    id: number;
+    uuid: string;
+    fullName?: string;
+    mobileNumber?: string;
+    email?: string;
+    usedAt?: string[]; // list of timestamps
+  }>;
+}
+
+export interface OfferDetailRequest {
+  offerId?: number | null;
+  storeId?: number | null;
+  name: string;
+  type?:"FLAT" | "PERCENTAGE"
+  method: "COUPON" | "VOUCHER" | string;
+  startDateTime?: string;
+  endDateTime?: string;
+  discount?: number;
+  allowedMaxDiscount?: number;
+  minSpendAmount?: number;
+  maxTotalUsage?: number;
+  requiredVoucherCount?: number;
+  description?: string;
+  couponDetail?: CouponDetailDTO | null;
+}
+
+export interface CouponDetailDTO {
+  id: number;
+  offerId: number;
+  code: string;
+  websiteDisplayMessage: string;
+  maxUsagePerUser: number;
+  totalUsabilityCount: number;
+  usabilityOption: "MONTH" | "QUARTER" | "HALF_YEAR" | "YEAR";
+}
+export interface OfferListItem {
+  offerId: number;
+  storeId?: number | null;
+  name: string;
+  type?: string;
+  method?: string;
+  startDateTime?: string;
+  endDateTime?: string;
+  discount?: number;
+  allowedMaxDiscount?: number;
+  minSpendAmount?: number;
+  maxTotalUsage?: number;
+  requiredVoucherCount?: number;
+  description?: string;
+  isActive?: boolean;
+  status?: string;
+  coupons?: CouponDetailDTO | null;
 }

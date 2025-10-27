@@ -1,4 +1,24 @@
 
+-----------BACKEND CHANGES
+Application.yml
+add url http://localhost:3000 in CORS_ALLOWED_ORIGINS
+
+SecurityConfiguration.java
+    add import
+        import com.google.cloud.storage.HttpMethod;
+
+in securityFilterChain
+    add this after permit all
+            .permitAll()
+            .requestMatchers(String.valueOf(HttpMethod.OPTIONS), "/**").permitAll()
+            .anyRequest().authenticated()
+
+in corsConfigurationSource
+    add this
+        configuration.setAllowedOrigins(List.of("http://localhost:3000"));
+
+
+
 Open terminal in project directory and run 
 npm install
 
@@ -8,8 +28,7 @@ to start the server
 
  
 Right now sidebar contains only order and delivery zones for demo
-Please remove the comment out of the products in file components/Sidebar.tsx to test it.
-I have implemented the products crud and variant crud in products tab.
+Check components/Sidebar.tsx
 
 For baseurl check file service/apiService.ts
 

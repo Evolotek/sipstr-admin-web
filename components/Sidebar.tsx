@@ -12,17 +12,19 @@ interface SidebarProps {
 
 const MODULES = [
   { id: "dashboard", label: "Dashboard", icon: "📊" },
-//  { id: "users", label: "Users", icon: "👥" },
-  { id: "orders", label: "Orders", icon: "📦" },
-  { id: "zones", label: "Zones", icon: "🛍️" },
-  { id: "products", label: "Products", icon: "🛍️" },
-  { id: "brands", label: "Brands, Categories, Packages", icon: "🏷️" },
-  // { id: "categories", label: "Categories", icon: "📂" },
-  // { id: "stores", label: "Stores", icon: "🏪" },
-  { id: "roles", label: "Roles", icon: "🔐" },
-  // { id: "top-picks", label: "Top Picks", icon: "⭐" },
-  // { id: "reports", label: "Reports", icon: "📈" },
+  // { id: "users", label: "Users", icon: "🧑‍🤝‍🧑" },
+  // { id: "roles", label: "Roles", icon: "🛡️" },
+  // { id: "brands", label: "Brands, Categories, Packages", icon: "🏷️" },
+  // { id: "products", label: "Products", icon: "🛒" },
+  // { id: "stores", label: "Stores", icon: "🏬" },
+  { id: "orders", label: "Orders", icon: "🧾" },
+  // { id: "coupon", label: "Coupon & Voucher", icon: "🎟️" },
+  // { id: "top-picks", label: "Top Picks", icon: "🌟" },
+  { id: "zones", label: "Zones", icon: "🗺️" },
+  // { id: "reports", label: "Reports", icon: "📈" }
 ]
+
+
 
 export function Sidebar({ activeModule, onModuleChange, isOpen, onToggle, session, onLogout }: SidebarProps) {
   return (

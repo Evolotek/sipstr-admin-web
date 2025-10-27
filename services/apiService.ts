@@ -1,5 +1,7 @@
 // src/services/api.ts (updated)
-import { Product, PackageUnit, Role } from "./types";
+import { Product, PackageUnit, Role, TopPick, User, Store, StoreItemDTO, StoreReportItemDTO, PageResponse,
+  OfferDetailRequest, OfferDetailResponse
+ } from "./types";
 
 export const API_BASE_URL = "http://localhost:8080";
 
@@ -96,16 +98,13 @@ export const api = {
 
 // --- Interfaces ---
 export interface LoginResponse { token: string; refreshToken: string; id: string; email: string; role: string }
-export interface User { uuid?: string; id?: string; name: string; email: string; role: string }
+
 export interface UserCreationData { name: string; email: string; password?: string; mobileNumber?: string; roleName: 'ADMIN' | 'SUPER_ADMIN' | 'STORE_OWNER' | 'USER'; }
 export interface Order { id: string; shortID?: string; customer: string; amount: number; status: string; date: string }
 export interface Brand { id: string; name: string }
 export interface Category { id: string; name: string; description: string }
-export interface Store { id: string; name: string; location: string; phone: string }
-export interface TopPick { id: string; productId: string; productUuid?: string; productName: string; rank: number }
 export interface Report { store: string; orders: number; revenue: number; date: string }
 export interface DeliveryZone { zoneId:number; zoneName: string; baseDeliveryFee: number; perMileFee: number; minOrderAmount: number; estimatedPreparationTime: number; isRestricted: boolean; coordinates: number[][]; storeUuid: string }
-export interface StoreItemDTO { storeUuid: string; storeName: string; storeAddress: string; storePhone: string; storeEmail?: string }
 export interface OrderResponseDTO {
   orderUuid: string; userUuid: string; userName: string; userEmail: string; address: string; mobileNumber: string;
   orderStatus: "CREATED" | "PAYMENT_PENDING" | "ACCEPTED_BY_STORE" | "PARTIALLY_ACCEPTED_BY_STORE"
@@ -136,9 +135,19 @@ export const apiService = {
 
   // --- Users ---
   createAdmin: async (data: Omit<UserCreationData,'roleName'>) => apiCall<User>("POST","/users",{...data, roleName:'ADMIN'}),
-  getUsers: async () => apiCall<User[]>("GET","/users"),
-  createUser: async (data: Omit<UserCreationData,'roleName'>) => apiCall<User>("POST","/users",{...data, roleName:'USER'}),
-  updateUser: async (uuid: string, data: Partial<User>) => apiCall<User>("PATCH", `/users/${uuid}`, data),
+  getUsers: async (page: number = 0, size: number = 10) => {
+    const qs = `?page=${encodeURIComponent(page)}&size=${encodeURIComponent(size)}`;
+    return apiCall<User[]>("GET", `/users${qs}`);
+  },
+  getUserByUuid: async (uuid: string) => apiCall<User>("GET", `/users/${uuid}`),
+  createUser: async (
+    data: Omit<UserCreationData, "roleName">,
+    roleName: "CUSTOMER" | "STORE_OWNER" | "ADMIN" = "CUSTOMER"
+  ) => apiCall<User>("POST", "/users", { ...data, roleName }),
+  updateUser: async (uuid: string, data: Partial<User>) => {
+    const response = await apiCall<any>("PATCH", `/users/${uuid}`, data);
+    return response?.data ?? response;
+  },
   deleteUser: async (uuid: string) => apiCall<void>("DELETE", `/users/${uuid}`),
 
   // --- Orders ---
@@ -232,7 +241,15 @@ export const apiService = {
 
   // --- Stores & Zones ---
   getStores: async () => apiCall<Store[]>("GET","/stores"),
-  createStore: async (data: Partial<Store>) => apiCall<Store>("POST","/stores",data),
+  getStoreByUuid: async (uuid: string): Promise<Store> =>  apiCall("GET", `/stores/${uuid}`),
+  updateStore: async (storeUuid: string, updateData: Partial<Store>): Promise<Store> => {
+    console.log(`API: Updating store ${storeUuid}`);
+    return apiCall<Store>("PATCH", `/stores/${storeUuid}`, updateData);
+  },
+  deleteStore: async (storeUuid: string): Promise<void> => {
+    console.log(`API: Deleting store ${storeUuid}`);
+    return apiCall<void>("DELETE", `/stores/${storeUuid}`);
+  },
   createZone: async (data: DeliveryZone) => apiCall<DeliveryZone>("POST","/vendor/zones",data),
   updateZone: async (zoneId: string, data: Partial<DeliveryZone>) => apiCall<DeliveryZone>("PATCH", `/stores/zones/${zoneId}`, data),
   deleteZone: async (zoneId: string) => apiCall<void>("DELETE", `/stores/zones/${zoneId}`),
@@ -248,23 +265,77 @@ export const apiService = {
 
   //Role-permission
   getRolePermissions: async () => apiCall("GET","/roles/permissions"),
-  addRolePermission: async (roleId: string, permission: string) => apiCall("POST", `/roles/${roleId}/permissions`, { permission }),
-  removeRolePermission: async (roleId: string, permission: string[]) => apiCall<void>("DELETE", `/roles/${roleId}/permissions`, { permission }),
+  addRolePermissions: async (roleId: string, permissions: string[]) =>
+  apiCall( "POST",`/roles/${roleId}/permissions`,{ permissions }),
+  removeRolePermission: async (roleId: string, permissions: string[]) =>
+  apiCall<void>("DELETE", `/roles/${roleId}/permissions`, { permissions }),
+
   
 
   // --- Top Picks ---
-  getTopPicks: async () => apiCall<TopPick[]>("GET","/top-picks"),
-  addTopPick: async (productUuid: string, rank: number) => apiCall<TopPick>("POST", `/top-picks/${productUuid}`, { rank }),
-  updateTopPick: async (productUuid: string, rank: number) => apiCall<TopPick>("PATCH", `/top-picks/${productUuid}`, { rank }),
-  removeTopPick: async (productUuid: string) => apiCall<void>("DELETE", `/top-picks/${productUuid}`),
+  getTopPicks: async () => {
+    const data = await apiCall<TopPick[]>("GET", "/top-picks");
+    return data.map(tp => ({ ...tp, rank: tp.rankingScore }));
+  },
+  addTopPick: async (productUuid: string, rank: number) =>
+    apiCall<TopPick>("POST", `/top-picks/${productUuid}?rankingScore=${encodeURIComponent(rank)}`),
+  updateTopPick: async (productUuid: string, rank: number, isFeatured?: boolean) =>
+    apiCall<TopPick>("PATCH", `/top-picks/${productUuid}`, {
+      rankingScore: rank,
+      ...(isFeatured !== undefined ? { isFeatured } : {}),
+    }),
+  removeTopPick: async (productUuid: string) =>
+    apiCall<void>("DELETE", `/top-picks/${productUuid}`),
+
+  // ---Coupon and Offer---
+    createOffer: async (offer: OfferDetailRequest): Promise<number> => {
+    const res = await apiCall<any>("POST", "/offers", offer);
+    return (res?.data ?? res?.offerId ?? res?.id ?? res) as number;
+  },
+
+  updateOffer: async (offer: OfferDetailRequest): Promise<void> => {
+    await apiCall<any>("PUT", "/update-offer-detail", offer);
+  },
+
+  getConsumptionHistory: async (offerId: number): Promise<OfferDetailResponse> => {
+    return apiCall<OfferDetailResponse>(
+      "GET",
+      `/consumption-history-detail?offerId=${encodeURIComponent(String(offerId))}`
+    );
+  },
+
+  deleteOffer: async (offerId: number): Promise<void> => {
+    await apiCall<any>("POST", `/offers/${encodeURIComponent(String(offerId))}`);
+  },
+
+  toggleOfferStatus: async (offerId: number): Promise<void> => {
+    await apiCall<any>("PATCH", `/offers/${encodeURIComponent(String(offerId))}/status`);
+  },
+  getAllOffers: async (storeId: number) => {
+    return apiCall<any[]>("GET", `/offers?storeId=${encodeURIComponent(String(storeId))}`);
+  },
+  getOfferDetailView: async (offerId: number): Promise<any> => {
+  return apiCall<any>("GET", `/offer-details?offerId=${encodeURIComponent(String(offerId))}`);
+},
+
+
 
   // --- Reports ---
-  getReports: async (storeId?: string, date?: string) => {
-    let endpoint = "/vendor/report";
+getReports: async (
+    storeUuid?: string,
+    startDate?: string, // dd-MM-yyyy
+    endDate?: string,   // dd-MM-yyyy
+    page: number = 0,
+    size: number = 10
+  ): Promise<PageResponse<StoreReportItemDTO>> => {
     const params = new URLSearchParams();
-    if (storeId) params.append("storeId", storeId);
-    if (date) params.append("date", date);
-    if (params.toString()) endpoint += `?${params.toString()}`;
-    return apiCall<Report[]>("GET", endpoint);
-  }
+    if (storeUuid) params.append("storeUuid", storeUuid);
+    if (startDate) params.append("startDate", startDate);
+    if (endDate) params.append("endDate", endDate);
+    params.append("page", String(page));
+    params.append("size", String(size));
+
+    const endpoint = `/vendor/report${params.toString() ? `?${params.toString()}` : ""}`;
+    return apiCall<PageResponse<StoreReportItemDTO>>("GET", endpoint);
+  },
 };

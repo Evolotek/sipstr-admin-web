@@ -39,17 +39,28 @@ export function LoginPage({ onLogin, loading, error }: LoginPageProps) {
           maxWidth: "400px",
         }}
       >
-        <h1
+        <h2
           style={{
             fontSize: "28px",
+            fontWeight: "bold",
+            marginBottom: "30px",
+            textAlign: "center",
+            color: "#FF6600",
+          }}
+        >
+          Welcome to SIPSTR
+        </h2>
+        <h2
+          style={{
+            fontSize: "24px",
             fontWeight: "bold",
             marginBottom: "30px",
             textAlign: "center",
             color: "#333",
           }}
         >
-          Super Admin
-        </h1>
+          Admin Login
+        </h2>
 
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: "20px" }}>

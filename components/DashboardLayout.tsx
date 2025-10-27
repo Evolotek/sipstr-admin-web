@@ -9,7 +9,7 @@ import{ UsersModule } from "./UsersModule"
 import{ OrdersModule }from "./OrdersModule"
 import ProductsModule from "./ProductsModule"
 import{ BCPModule }from "./BrandsModule"
-import{ CategoriesModule }from "./CategoriesModule"
+import{ CouponsModule }from "./CouponModule"
 import{ StoresModule }from "./StoresModule"
 import{ RolesModule }from "./RolesModule"
 import{ TopPicksModule }from "./TopPicksModule"
@@ -27,7 +27,7 @@ type ModuleType =
   | "orders"
   | "products"
   | "brands"
-  | "categories"
+  | "coupon"
   | "stores"
   | "roles"
   | "top-picks"
@@ -50,8 +50,8 @@ export function DashboardLayout({ session, onLogout }: DashboardLayoutProps) {
         return <ProductsModule />
       case "brands":
         return <BCPModule />
-      case "categories":
-        return <CategoriesModule />
+      case "coupon":
+        return <CouponsModule />
       case "stores":
         return <StoresModule />
       case "roles":
