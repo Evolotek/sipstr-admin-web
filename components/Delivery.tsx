@@ -522,7 +522,7 @@ export default function DeliveryZonesPage() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                   <div>
                     <strong>{pm.parsedDescription?.zoneName ?? pm.name ?? `Placemark ${idx + 1}`}</strong>
-                    <div style={{ fontSize: "13px", color: "#666" }}>{pm.parsedDescription?.notes ? (Array.isArray(pm.parsedDescription.notes) ? pm.parsedDescription.notes.join("; ") : pm.parsedDescription.notes) : pm.rawDescription}</div>
+                    {/* <div style={{ fontSize: "13px", color: "#666" }}>{pm.parsedDescription?.notes ? (Array.isArray(pm.parsedDescription.notes) ? pm.parsedDescription.notes.join("; ") : pm.parsedDescription.notes) : pm.rawDescription}</div> */}
                     <div style={{ marginTop: "8px", fontSize: "13px" }}>
                       <div><strong>Base Fee:</strong> {pm.parsedDescription?.baseDeliveryFee ?? 0}</div>
                       <div><strong>Per Mile Fee:</strong> {pm.parsedDescription?.perMileFee ?? 0}</div>
