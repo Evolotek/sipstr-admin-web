@@ -2,8 +2,7 @@
 
 import { useState } from "react"
 import type { AdminSession } from "../app"
-// Corrected imports: Switched from named imports ({ Module }) to default imports (Module)
-// AND adjusted paths to be consistently relative (e.g., "./UsersModule")
+
 import { Sidebar } from "./Sidebar" // Assuming Sidebar is a named export for structure
 import{ UsersModule } from "./UsersModule"
 import{ OrdersModule }from "./OrdersModule"

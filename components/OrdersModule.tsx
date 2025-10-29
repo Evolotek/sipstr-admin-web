@@ -1,108 +1,56 @@
 "use client"
 
 import React, { useState, useCallback } from "react"
-
-// ------------------- API Service -------------------
-
-const API_BASE_URL = "http://localhost:8080"
-
-const getToken = (): string | null =>
-  typeof window !== "undefined" ? localStorage.getItem("auth_token") : null
-const clearToken = (): void => { if (typeof window !== "undefined") localStorage.removeItem("auth_token") }
+import { apiService } from "@/services/apiService"
+import { Order } from "@/services/types"
 
 interface ApiError extends Error { responseBody?: any; status?: number }
 
-async function apiCall<T>(method: string, endpoint: string, body?: unknown): Promise<T> {
-  const headers: HeadersInit = { "Content-Type": "application/json" }
-  const token = getToken()
-  if (token) headers["Authorization"] = `Bearer ${token}`
-
-  const options: RequestInit = { method, headers }
-  if (body) options.body = JSON.stringify(body)
-
-  let response: Response
-  try { response = await fetch(`${API_BASE_URL}${endpoint}`, options) }
-  catch (err) { const e = new Error(`Network Error: Could not connect to API`) as any; e.status = 0; throw e }
-
-  if (!response.ok) {
-    if (response.status === 401) clearToken()
-    let errorBody: any = {}
-    try { errorBody = await response.json() } catch { errorBody.message = await response.text() }
-    const e = new Error(errorBody.message || `API Error: ${response.status}`) as any
-    e.responseBody = errorBody
-    e.status = response.status
-    throw e
-  }
-
-  if (response.status === 204 || response.headers.get("Content-Length") === "0") return {} as T
-  return response.json()
+// ------------------- Reusable Confirm Modal -------------------
+const ConfirmModal = ({ open, title, message, onCancel, onConfirm }: {
+  open: boolean
+  title?: string
+  message: string
+  onCancel: () => void
+  onConfirm: () => void
+}) => {
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+      <div className="bg-white p-6 rounded-xl shadow-lg w-[460px] max-w-full">
+        {title && <h3 className="text-lg font-bold mb-2">{title}</h3>}
+        <p className="text-sm text-gray-700 mb-6">{message}</p>
+        <div className="flex justify-end gap-3">
+          <button onClick={onCancel} className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">Cancel</button>
+          <button onClick={onConfirm} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Confirm</button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
-// ------------------- Types -------------------
+// ------------------- Reusable Alert Toast (centered) -------------------
+const AlertToast = ({ open, message, type = "info", onClose }: {
+  open: boolean
+  message: string
+  type?: "info" | "success" | "error"
+  onClose: () => void
+}) => {
+  if (!open) return null
+  const bg = type === "success" ? "bg-green-100 border-green-300 text-green-800"
+            : type === "error" ? "bg-red-100 border-red-300 text-red-800"
+            : "bg-gray-100 border-gray-300 text-gray-800"
 
-interface StoreItemDTO {
-  storeUuid: string
-  storeName: string
-  storeAddress: string
-  storePhone: string
-  storeEmail?: string
-  storeDeliveryFee?: number
-  items?: {
-    itemId: number
-    itemName: string
-    quantity: number
-    price: number
-    finalPrice: number
-    status: string
-  }[]
-}
-
-interface OrderItem {
-  id: number
-  name: string
-  price: number
-}
-
-interface Order {
-  orderUuid: string
-  userUuid: string
-  userName: string
-  userEmail: string
-  address: string
-  mobileNumber: string
-  orderStatus: string
-  paymentStatus: string
-  subtotal: number
-  totalTax: number
-  totalStoreDiscount: number
-  totalSipstrDiscount: number
-  totalDeliveryFee: number
-  serviceFee: number
-  tip: number
-  totalCheckoutBagFee: number
-  totalBottleDepositFee: number
-  originalTotal: number
-  adjustedTotal: number
-  differenceTotal: number
-  itemOrderedCount: number
-  totalQuantity: number
-  specialInstructions: string
-  estimatedDeliveryTime: string
-  actualDeliveryTime?: string
-  isScheduled: boolean
-  stores: StoreItemDTO[]
-  items?: OrderItem[]
-}
-
-// ------------------- API Service -------------------
-
-const apiService = {
-  trackOrder: (shortID: string): Promise<Order> =>
-    apiCall<Order>("GET", `/orders/track?orderShortId=${shortID}`),
-  refundOrderFull: (id: string) =>
-    apiCall<void>("POST", "/orders/refund", { orderShortId: id }),
-  refundOrderPartial: (id: string, itemIds: number[]) =>
-    apiCall<void>("POST", "/orders/refund/partial", { orderShortId: id, itemIds }),
+  return (
+    <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
+      <div className={`pointer-events-auto ${bg} border p-4 rounded-lg shadow-lg max-w-xl w-[90%]`}>
+        <div className="flex justify-between items-start gap-4">
+          <div className="text-sm">{message}</div>
+          <button onClick={onClose} className="ml-4 text-sm font-medium text-gray-600 hover:text-gray-900">✕</button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ------------------- Partial Refund Dialog -------------------
@@ -110,10 +58,11 @@ const apiService = {
 interface PartialRefundDialogProps {
   order: Order
   onClose: () => void
-  onRefund: (itemIds: number[]) => void
+  // when user chooses items and clicks "Refund Selected" this callback sends the selected item ids to parent
+  onRequestConfirm: (itemIds: number[]) => void
 }
 
-const PartialRefundDialog = ({ order, onClose, onRefund }: PartialRefundDialogProps) => {
+const PartialRefundDialog = ({ order, onClose, onRequestConfirm }: PartialRefundDialogProps) => {
   const [selectedIds, setSelectedIds] = useState<number[]>([])
 
   const toggleItem = (id: number) => {
@@ -122,8 +71,8 @@ const PartialRefundDialog = ({ order, onClose, onRefund }: PartialRefundDialogPr
 
   const handleSubmit = () => {
     if (selectedIds.length === 0) { alert("Select at least one item."); return }
-    const confirmRefund = confirm(`Are you sure you want to refund ${selectedIds.length} item(s)?`)
-    if (confirmRefund) onRefund(selectedIds)
+    // delegate confirmation to parent: parent will show ConfirmModal
+    onRequestConfirm(selectedIds)
   }
 
   return (
@@ -155,81 +104,167 @@ interface OrderDetailsDialogProps {
 }
 
 const OrderDetailsDialog = ({ order, onClose }: OrderDetailsDialogProps) => {
+  const copyId = async () => {
+    try {
+      await navigator.clipboard.writeText(order.orderUuid)
+      // you can replace this with your AlertToast if you want a styled message
+      alert("Order ID copied to clipboard")
+    } catch {
+      alert("Failed to copy")
+    }
+  }
+
+  const fmt = (n?: number) => ((n ?? 0).toFixed(2))
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-      <div className="bg-white p-6 rounded-xl shadow-lg w-96 max-h-[80vh] overflow-y-auto">
-        <h3 className="text-lg font-bold mb-4">Order Details: {order.orderUuid}</h3>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Order details for ${order.orderUuid}`}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
+    >
+      {/* backdrop */}
+      <div className="fixed inset-0 bg-black opacity-40" onClick={onClose} />
 
-        <div className="mb-4">
-          <p><span className="font-semibold">Customer:</span> {order.userName}</p>
-          <p><span className="font-semibold">Email:</span> {order.userEmail}</p>
-          <p><span className="font-semibold">Phone:</span> {order.mobileNumber}</p>
-          <p><span className="font-semibold">Address:</span> {order.address}</p>
-        </div>
-
-        {order.stores.map(store => (
-          <div key={store.storeUuid} className="mb-4 border-t pt-2">
-            <h4 className="font-semibold text-orange-600">{store.storeName}</h4>
-            {store.items && store.items.length > 0 && (
-              <ul className="ml-4 list-disc mt-1">
-                {store.items.map(item => (
-                  <li key={item.itemId}>{item.itemName} x {item.quantity} — ${item.finalPrice.toFixed(2)}</li>
-                ))}
-              </ul>
-            )}
-            <p className="mt-1 text-sm text-gray-600">Delivery Fee: ${store.storeDeliveryFee?.toFixed(2) ?? 0}</p>
+      {/* modal */}
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto z-10">
+        {/* header */}
+        <div className="sticky top-0 bg-white/90 backdrop-blur-sm border-b border-gray-100 px-6 py-4 rounded-t-2xl flex items-center justify-between">
+          <div>
+            <h3 className="text-lg sm:text-xl font-semibold text-gray-900">Order Details</h3>
+            <div className="text-xs text-gray-500">{order.orderUuid}</div>
           </div>
-        ))}
 
-        <div className="border-t pt-2 mt-2">
-          <p><span className="font-semibold">Subtotal:</span> ${order.subtotal.toFixed(2)}</p>
-          <p><span className="font-semibold">Total Tax:</span> ${order.totalTax.toFixed(2)}</p>
-          <p><span className="font-semibold">Delivery Fee:</span> ${order.totalDeliveryFee.toFixed(2)}</p>
-          <p><span className="font-semibold">Service Fee:</span> ${order.serviceFee.toFixed(2)}</p>
-          <p><span className="font-semibold">Tip:</span> ${order.tip.toFixed(2)}</p>
-          <p className="font-bold mt-1"><span className="font-semibold">Total Amount:</span> ${order.originalTotal.toFixed(2)}</p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={copyId}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 hover:bg-gray-100"
+              title="Copy Order ID"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <path d="M8 7h8v10H8z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                <rect x="4" y="4" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              <span>Copy ID</span>
+            </button>
+
+            <button
+              onClick={onClose}
+              aria-label="Close"
+              className="inline-flex items-center justify-center w-9 h-9 rounded-lg hover:bg-gray-100"
+            >
+              <svg className="w-5 h-5 text-gray-600" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <path d="M6 18L18 6M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          </div>
         </div>
 
-        <div className="flex justify-end mt-4">
-          <button onClick={onClose} className="px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400">Close</button>
+        {/* body */}
+        <div className="px-6 py-6 space-y-6">
+          {/* Customer info */}
+          <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <h4 className="text-sm text-gray-500 uppercase tracking-wide"><b>Customer</b></h4>
+              <div className="mt-2 text-sm text-gray-800 font-medium">{order.userName}</div>
+              <div className="text-sm text-gray-600 mt-1">{order.userEmail}</div>
+              <div className="text-sm text-gray-600 mt-1">{order.mobileNumber}</div>
+              <div className="text-sm text-gray-600 mt-1">{order.address}</div>
+            </div>
+
+            <div>
+              <h4 className="text-sm text-gray-500 uppercase tracking-wide"><b>Status</b></h4>
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${order.orderStatus.includes('REFUND') || order.orderStatus === 'CANCELLED_BY_CUSTOMER' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
+                  {order.orderStatus}
+                </span>
+              </div>
+
+              <div className="mt-4">
+                <h5 className="text-xs text-gray-500 uppercase tracking-wide"><b>Order Short ID</b></h5>
+                <div className="mt-1 text-sm font-mono text-gray-700">{order.orderUuid}</div>
+              </div>
+            </div>
+          </section>
+
+          {/* Stores & items */}
+          <section className="space-y-4">
+            {order.stores.map((store) => (
+              <div key={store.storeUuid} className="border rounded-xl p-4 bg-white shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-base font-semibold text-orange-600">{store.storeName}</div>
+                    {/* <div className="text-xs text-gray-500">{store.storeUuid}</div> */}
+                  </div>
+                </div>
+
+                {/* items table */}
+                <div className="mt-3 overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs text-gray-500 border-b">
+                        <th className="py-2 pr-4">Item</th>
+                        <th className="py-2 pr-4">Status</th>
+                        <th className="py-2 pr-4">Qty</th>
+                        <th className="py-2 pr-4">Individual Price</th>
+                                                
+                        <th className="py-2 pr-4 text-right">Price</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {store.items && store.items.length > 0 ? store.items.map(item => (
+                        <tr key={item.itemId} className="border-b last:border-b-0">
+                          <td className="py-3 pr-4">{item.itemName}</td>
+                          <td className="py-3 pr-4">{item.status==='ORIGINAL_ITEM'?"ORIGINAL ITEM":"SUBSTITUTE ITEM"}</td>
+                          <td className="py-3 pr-4">{item.quantity}</td>
+                          <td className="py-3 pr-4">{item.price ?? "-"}</td>
+                          <td className="py-3 pr-4 text-right font-medium">${fmt(item.finalPrice)}</td>
+                        </tr>
+                      )) : (
+                        <tr>
+                          <td colSpan={4} className="py-3 text-sm text-gray-500">No items for this store.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </section>
+
+          {/* Totals */}
+          <section className="border-t pt-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="text-sm text-gray-600">
+                <div className="flex justify-between py-1"><span>Subtotal</span><span className="font-medium">${fmt(order.subtotal)}</span></div>
+                <div className="flex justify-between py-1"><span>Total Tax</span><span className="font-medium">${fmt(order.totalTax)}</span></div>
+                <div className="flex justify-between py-1"><span>Delivery Fee</span><span className="font-medium">${fmt(order.totalDeliveryFee)}</span></div>
+                <div className="flex justify-between py-1"><span>Bag Fee</span><span className="font-medium">${fmt(order.totalCheckoutBagFee)}</span></div>
+              </div>
+
+              <div className="text-sm text-gray-600">
+                <div className="flex justify-between py-1"><span>Bottle Deposit Fee</span><span className="font-medium">${fmt(order.totalBottleDepositFee)}</span></div>
+                <div className="flex justify-between py-1"><span>Service Fee</span><span className="font-medium">${fmt(order.serviceFee)}</span></div>
+                <div className="flex justify-between py-1"><span>Tip</span><span className="font-medium">${fmt(order.tip)}</span></div>
+                <div className="flex justify-between py-1"><span>Refunded</span><span className="font-medium text-red-600">${fmt(order.refundAmount)}</span></div>
+              </div>
+            </div>
+
+            <div className="mt-4 flex items-center justify-end gap-4">
+              <div className="text-sm text-gray-500">Original Total</div>
+              <div className="text-2xl font-bold text-gray-900">${fmt(order.originalTotal)}</div>
+            </div>
+          </section>
+
+          {/* footer actions */}
+          <div className="pt-4 flex justify-end gap-3">
+            <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200">Close</button>
+          </div>
         </div>
       </div>
     </div>
   )
 }
-
-// ------------------- CrudTable -------------------
-
-const CrudTable = ({ columns, data, loading, emptyMessage }: { columns: string[], data: any[], loading: boolean, emptyMessage: string }) => (
-  <div className="bg-white p-4 rounded-xl shadow-lg border border-gray-100">
-    <h4 className="text-xl font-bold mb-4 text-gray-800">Search Results</h4>
-    {loading && <div className="text-center p-8 text-orange-500">Loading...</div>}
-    {!loading && data.length === 0 && <p className="text-center p-8 text-gray-500 bg-gray-50 rounded-lg">{emptyMessage}</p>}
-    {!loading && data.length > 0 && (
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>{columns.map((col, i) => <th key={i} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{col}</th>)}</tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {data.map((row, rowIndex) => (
-              <tr key={row.id}>
-                {row.cells.map((cell: React.ReactNode, cellIndex: number) => (
-                  <td key={cellIndex} className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{cell}</td>
-                ))}
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  {row.actions?.map((action: { label: string, onClick: () => void }, actionIndex: number) => (
-                    <button key={actionIndex} onClick={action.onClick} className="text-orange-600 hover:text-orange-900 ml-3">{action.label}</button>
-                  ))}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    )}
-  </div>
-)
 
 // ------------------- OrdersModule -------------------
 
@@ -242,11 +277,42 @@ export function OrdersModule() {
   const [showPartialDialog, setShowPartialDialog] = useState(false)
   const [showDetailsDialog, setShowDetailsDialog] = useState<Order | null>(null)
 
+  // confirm modal state
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [confirmMessage, setConfirmMessage] = useState("")
+  const confirmCallbackRef = React.useRef<(() => void) | null>(null)
+
+  // alert toast state
+  const [alertOpen, setAlertOpen] = useState(false)
+  const [alertMessage, setAlertMessage] = useState("")
+  const [alertType, setAlertType] = useState<"info"|"success"|"error">("info")
+
+  const openConfirm = (message: string, cb: () => void) => {
+    confirmCallbackRef.current = cb
+    setConfirmMessage(message)
+    setConfirmOpen(true)
+  }
+
+  const handleConfirm = () => {
+    setConfirmOpen(false)
+    const cb = confirmCallbackRef.current
+    confirmCallbackRef.current = null
+    if (cb) cb()
+  }
+
+  const showAlert = (message: string, type: "info"|"success"|"error" = "info") => {
+    setAlertMessage(message)
+    setAlertType(type)
+    setAlertOpen(true)
+    // optional auto-close after 3.5s
+    setTimeout(() => setAlertOpen(false), 3500)
+  }
+
   const fetchOrderById = useCallback(async (idToSearch: string) => {
     if (!idToSearch.trim()) { setError("Enter an Order Short ID."); setOrders([]); setSelectedOrder(null); return }
     setLoading(true); setError(null); setSelectedOrder(null)
     try {
-      const data = await apiService.trackOrder(idToSearch)
+      const data = await apiService.getTrackedOrder(idToSearch)
       setOrders([data])
       setSelectedOrder(data)
     } catch (err) {
@@ -257,8 +323,18 @@ export function OrdersModule() {
   }, [])
 
   const handleRefundClick = (order: Order, type: "full" | "partial") => {
-    if (type === "full") handleRefund(order.orderUuid, "full")
-    else setShowPartialDialog(true)
+    if (type === "full") {
+      openConfirm(`Are you sure you want to FULL refund order ${order.orderUuid}?`, () => handleRefund(order.orderUuid, "full"))
+    } else {
+      // open partial dialog; that dialog will call back into onRequestConfirm which will open ConfirmModal
+      setShowPartialDialog(true)
+    }
+  }
+
+  // parent-level partial-refund confirmation handler (called from PartialRefundDialog via onRequestConfirm)
+  const handlePartialRequestConfirm = (itemIds: number[]) => {
+    if (!selectedOrder) return
+    openConfirm(`Are you sure you want to refund ${itemIds.length} item(s) from order ${selectedOrder.orderUuid}?`, () => handleRefund(selectedOrder.orderUuid, "partial", itemIds))
   }
 
   const handleRefund = async (orderId: string, type: "full" | "partial", itemIds?: number[]) => {
@@ -266,15 +342,17 @@ export function OrdersModule() {
     try {
       if (type === "full") {
         await apiService.refundOrderFull(orderId)
-        alert(`Full refund successfully processed for order ${orderId}.`)
+        showAlert(`Full refund successfully processed for order ${orderId}.`, "success")
       } else if (itemIds) {
         await apiService.refundOrderPartial(orderId, itemIds)
-        alert(`Partial refund successfully processed for order ${orderId}.`)
+        showAlert(`Partial refund successfully processed for order ${orderId}.`, "success")
       }
       if (selectedOrder) fetchOrderById(selectedOrder.orderUuid)
     } catch (err) {
       const apiErr = err as ApiError
-      setError(apiErr.responseBody?.message || apiErr.message || `Failed to process ${type} refund.`)
+      const message = apiErr.responseBody?.message || apiErr.message || `Failed to process ${type} refund.`
+      setError(message)
+      showAlert(message, "error")
     } finally { setLoading(false); setShowPartialDialog(false) }
   }
 
@@ -307,9 +385,10 @@ export function OrdersModule() {
             <button onClick={() => setSelectedOrder(null)} className="text-gray-500 hover:text-gray-700">✖</button>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-y-4 gap-x-6 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-y-4 gap-x-6 mb-6">
             <div className="flex flex-col"><span className="text-xs text-gray-500 uppercase">Customer</span><span className="font-semibold">{selectedOrder.userName}</span></div>
             <div className="flex flex-col"><span className="text-xs text-gray-500 uppercase">Amount</span><span className="text-green-600 font-semibold">${selectedOrder.originalTotal.toFixed(2)}</span></div>
+            <div className="flex flex-col"><span className="text-xs text-gray-500 uppercase">Refund Amount</span><span className="text-green-600 font-semibold">${(selectedOrder.refundAmount ?? 0).toFixed(2)}</span></div>
             <div className="flex flex-col"><span className="text-xs text-gray-500 uppercase">Order Status</span><span className={`font-bold uppercase ${selectedOrder.orderStatus.includes('REFUND') || selectedOrder.orderStatus === 'CANCELLED_BY_CUSTOMER' ? 'text-red-500' : 'text-blue-500'}`}>{selectedOrder.orderStatus}</span></div>
             <div className="flex flex-col"><span className="text-xs text-gray-500 uppercase">Payment Status</span><span className="font-semibold">{selectedOrder.paymentStatus}</span></div>
           </div>
@@ -325,30 +404,29 @@ export function OrdersModule() {
         </div>
       )}
 
-      <CrudTable
-        columns={["Order ID", "Customer", "Amount", "Status", "Payment", "Actions"]}
-        data={orders.map(o => ({
-          id: o.orderUuid,
-          cells: [o.orderUuid, o.userName, `$${o.subtotal.toFixed(2)}`, o.orderStatus, o.paymentStatus],
-          actions: [
-            { label: "View Details", onClick: () => setShowDetailsDialog(o) }
-          ]
-        }))}
-        loading={loading}
-        emptyMessage={'Use the search bar above to find an order.'}
-      />
-
       {showPartialDialog && selectedOrder && (
-        <PartialRefundDialog 
-          order={{ ...selectedOrder, items: partialRefundItems }} 
-          onClose={() => setShowPartialDialog(false)} 
-          onRefund={(itemIds) => handleRefund(selectedOrder.orderUuid, "partial", itemIds)} 
+        <PartialRefundDialog
+          order={{ ...selectedOrder, items: partialRefundItems }}
+          onClose={() => setShowPartialDialog(false)}
+          onRequestConfirm={(itemIds) => handlePartialRequestConfirm(itemIds)}
         />
       )}
 
       {showDetailsDialog && showDetailsDialog && (
         <OrderDetailsDialog order={showDetailsDialog} onClose={() => setShowDetailsDialog(null)} />
       )}
+
+      {/* Confirm Modal */}
+      <ConfirmModal
+        open={confirmOpen}
+        title="Please confirm"
+        message={confirmMessage}
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={handleConfirm}
+      />
+
+      {/* Centered Alert */}
+      <AlertToast open={alertOpen} message={alertMessage} type={alertType} onClose={() => setAlertOpen(false)} />
     </div>
   )
 }

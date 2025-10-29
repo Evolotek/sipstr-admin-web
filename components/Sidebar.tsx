@@ -1,5 +1,6 @@
 "use client"
 import type { AdminSession } from "../app"
+import { useMemo } from "react"
 
 interface SidebarProps {
   activeModule: string
@@ -10,23 +11,49 @@ interface SidebarProps {
   onLogout: () => void
 }
 
-const MODULES = [
-  { id: "dashboard", label: "Dashboard", icon: "📊" },
-  // { id: "users", label: "Users", icon: "🧑‍🤝‍🧑" },
-  // { id: "roles", label: "Roles", icon: "🛡️" },
-  // { id: "brands", label: "Brands, Categories, Packages", icon: "🏷️" },
-  // { id: "products", label: "Products", icon: "🛒" },
-  // { id: "stores", label: "Stores", icon: "🏬" },
-  { id: "orders", label: "Orders", icon: "🧾" },
-  // { id: "coupon", label: "Coupon & Voucher", icon: "🎟️" },
-  // { id: "top-picks", label: "Top Picks", icon: "🌟" },
-  { id: "zones", label: "Zones", icon: "🗺️" },
-  // { id: "reports", label: "Reports", icon: "📈" }
+/** Use simple flagKey names (not the raw env var names) */
+const ALL_MODULES = [
+  { id: "dashboard", label: "Dashboard", icon: "📊", flagKey: "dashboard" },
+  { id: "users", label: "Users", icon: "🧑‍🤝‍🧑", flagKey: "users" },
+  { id: "roles", label: "Roles", icon: "🛡️", flagKey: "roles" },
+  { id: "brands", label: "Brands, Categories, Packages", icon: "🏷️", flagKey: "brands" },
+  { id: "products", label: "Products", icon: "🛒", flagKey: "products" },
+  { id: "stores", label: "Stores", icon: "🏬", flagKey: "stores" },
+  { id: "orders", label: "Orders", icon: "🧾", flagKey: "orders" },
+  { id: "coupon", label: "Coupon & Voucher", icon: "🎟️", flagKey: "coupon" },
+  { id: "top-picks", label: "Top Picks", icon: "🌟", flagKey: "topPicks" },
+  { id: "zones", label: "Zones", icon: "🗺️", flagKey: "zones" },
+  { id: "reports", label: "Reports", icon: "📈", flagKey: "reports" }
 ]
 
-
+/**
+ * Build a static map from known env vars.
+ * IMPORTANT: use direct property access so Next.js can inline these at build time.
+ */
+const FEATURE_FLAGS = {
+  dashboard: process.env.NEXT_PUBLIC_FEATURE_DASHBOARD === "true",
+  users: process.env.NEXT_PUBLIC_FEATURE_USERS === "true",
+  roles: process.env.NEXT_PUBLIC_FEATURE_ROLES === "true",
+  brands: process.env.NEXT_PUBLIC_FEATURE_BRANDS === "true",
+  products: process.env.NEXT_PUBLIC_FEATURE_PRODUCTS === "true",
+  stores: process.env.NEXT_PUBLIC_FEATURE_STORES === "true",
+  orders: process.env.NEXT_PUBLIC_FEATURE_ORDERS === "true",
+  coupon: process.env.NEXT_PUBLIC_FEATURE_COUPON === "true",
+  topPicks: process.env.NEXT_PUBLIC_FEATURE_TOP_PICKS === "true",
+  zones: process.env.NEXT_PUBLIC_FEATURE_ZONES === "true",
+  reports: process.env.NEXT_PUBLIC_FEATURE_REPORTS === "true",
+}
 
 export function Sidebar({ activeModule, onModuleChange, isOpen, onToggle, session, onLogout }: SidebarProps) {
+  // filter only enabled modules — FEATURE_FLAGS is static so this works reliably
+  const modules = useMemo(
+    () => ALL_MODULES.filter((m) => (m.flagKey ? !!FEATURE_FLAGS[m.flagKey as keyof typeof FEATURE_FLAGS] : true)),
+    []
+  )
+
+  // optional: uncomment to debug single flag — this will show the inlined value
+  // console.log("FEATURE_FLAGS.orders:", FEATURE_FLAGS.orders, "raw env:", process.env.NEXT_PUBLIC_FEATURE_ORDERS)
+
   return (
     <>
       <aside
@@ -39,10 +66,9 @@ export function Sidebar({ activeModule, onModuleChange, isOpen, onToggle, sessio
           transition: "width 0.3s ease",
           overflow: "hidden",
           borderRight: "1px solid #222",
-          position: "relative", // sidebar context
+          position: "relative",
         }}
       >
-        {/* Sidebar header */}
         <div
           style={{
             padding: "20px",
@@ -50,45 +76,23 @@ export function Sidebar({ activeModule, onModuleChange, isOpen, onToggle, sessio
             minHeight: "60px",
             display: "flex",
             alignItems: "center",
-            justifyContent: "space-between", // title left, close button right
+            justifyContent: "space-between",
           }}
         >
-          <h1
-            style={{
-              margin: 0,
-              fontSize: "18px",
-              fontWeight: "bold",
-              color: "#FF6600",
-            }}
-          >
-            Admin
-          </h1>
+          <h1 style={{ margin: 0, fontSize: "18px", fontWeight: "bold", color: "#FF6600" }}>Admin</h1>
 
           {isOpen && (
             <button
               onClick={onToggle}
-              style={{
-                backgroundColor: "transparent",
-                border: "none",
-                color: "white",
-                fontSize: "20px",
-                cursor: "pointer",
-              }}
+              style={{ backgroundColor: "transparent", border: "none", color: "white", fontSize: "20px", cursor: "pointer" }}
             >
               ✕
             </button>
           )}
         </div>
 
-        {/* Sidebar modules */}
-        <nav
-          style={{
-            flex: 1,
-            overflowY: "auto",
-            padding: "12px 0",
-          }}
-        >
-          {MODULES.map((module) => (
+        <nav style={{ flex: 1, overflowY: "auto", padding: "12px 0" }}>
+          {modules.map((module) => (
             <button
               key={module.id}
               onClick={() => onModuleChange(module.id)}
@@ -107,10 +111,10 @@ export function Sidebar({ activeModule, onModuleChange, isOpen, onToggle, sessio
                 gap: "12px",
               }}
               onMouseEnter={(e) => {
-                if (activeModule !== module.id) e.currentTarget.style.backgroundColor = "#444"
+                if (activeModule !== module.id) (e.currentTarget as HTMLButtonElement).style.backgroundColor = "#444"
               }}
               onMouseLeave={(e) => {
-                if (activeModule !== module.id) e.currentTarget.style.backgroundColor = "transparent"
+                if (activeModule !== module.id) (e.currentTarget as HTMLButtonElement).style.backgroundColor = "transparent"
               }}
             >
               <span>{module.icon}</span>
@@ -119,13 +123,7 @@ export function Sidebar({ activeModule, onModuleChange, isOpen, onToggle, sessio
           ))}
         </nav>
 
-        {/* Logout */}
-        <div
-          style={{
-            borderTop: "1px solid #444",
-            padding: "12px 20px",
-          }}
-        >
+        <div style={{ borderTop: "1px solid #444", padding: "12px 20px" }}>
           <button
             onClick={onLogout}
             style={{
@@ -145,7 +143,6 @@ export function Sidebar({ activeModule, onModuleChange, isOpen, onToggle, sessio
         </div>
       </aside>
 
-      {/* Hamburger menu when sidebar is closed */}
       {!isOpen && (
         <button
           onClick={onToggle}
@@ -167,8 +164,6 @@ export function Sidebar({ activeModule, onModuleChange, isOpen, onToggle, sessio
           ☰
         </button>
       )}
-
-
     </>
   )
 }

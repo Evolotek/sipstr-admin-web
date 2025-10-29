@@ -1,18 +1,108 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { deliveryZoneService } from "../services/deliveryZone"
-import { DeliveryZone, CreateDeliveryZoneRequest } from "../services/types"
+import { useEffect, useState } from "react";
+import { deliveryZoneService } from "../services/deliveryZone";
+import { apiService } from "../services/apiService"; // <-- new: used to fetch stores
+import { DeliveryZone, CreateDeliveryZoneRequest } from "../services/types";
+
+/**
+ * Helper: parse KML string -> array of parsed placemarks
+ * (unchanged from previous)
+ */
+function parseKmlToPlacemarks(kmlText: string) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(kmlText, "application/xml");
+  const placemarks = Array.from(doc.getElementsByTagName("Placemark"));
+
+  const parsed = placemarks.map((pm) => {
+    const nameEl = pm.getElementsByTagName("name")[0];
+    const descEl = pm.getElementsByTagName("description")[0];
+    const coordsEl = pm.getElementsByTagName("coordinates")[0];
+
+    const name = nameEl ? nameEl.textContent?.trim() ?? "" : "";
+    const rawDescription = descEl ? descEl.textContent ?? "" : "";
+
+    let coordinates: number[][] = [];
+    if (coordsEl && coordsEl.textContent) {
+      const coordsText = coordsEl.textContent.trim();
+      const tokens = coordsText.split(/\s+/).map((t) => t.trim()).filter(Boolean);
+      coordinates = tokens.map((tok) => {
+        const parts = tok.split(",").map((p) => p.trim());
+        const lon = parseFloat(parts[0]);
+        const lat = parseFloat(parts[1]);
+        return [lat, lon];
+      });
+    }
+
+    // parse description: try JSON first, else parse key:value lines or <br>-separated text
+    let descData: Record<string, any> = {};
+    const cleaned = rawDescription.trim();
+    const withNewlines = cleaned.replace(/<br\s*\/?>/gi, "\n").trim();
+
+    try {
+      const maybeJson = cleaned.startsWith("{") ? JSON.parse(cleaned) : null;
+      if (maybeJson && typeof maybeJson === "object") {
+        descData = maybeJson;
+      } else {
+        const lines = withNewlines.split("\n").map((l) => l.trim()).filter(Boolean);
+        for (const line of lines) {
+          const sepIndex = line.indexOf(":");
+          if (sepIndex > -1) {
+            const key = line.slice(0, sepIndex).trim();
+            const value = line.slice(sepIndex + 1).trim();
+            if (/^(true|false)$/i.test(value)) descData[key] = value.toLowerCase() === "true";
+            else if (!isNaN(Number(value))) descData[key] = Number(value);
+            else descData[key] = value;
+          } else {
+            if (!descData.notes) descData.notes = [];
+            descData.notes.push(line);
+          }
+        }
+      }
+    } catch (err) {
+      const lines = withNewlines.split("\n").map((l) => l.trim()).filter(Boolean);
+      for (const line of lines) {
+        const sepIndex = line.indexOf(":");
+        if (sepIndex > -1) {
+          const key = line.slice(0, sepIndex).trim();
+          const value = line.slice(sepIndex + 1).trim();
+          if (/^(true|false)$/i.test(value)) descData[key] = value.toLowerCase() === "true";
+          else if (!isNaN(Number(value))) descData[key] = Number(value);
+          else descData[key] = value;
+        } else {
+          if (!descData.notes) descData.notes = [];
+          descData.notes.push(line);
+        }
+      }
+    }
+
+    return {
+      name,
+      rawDescription,
+      parsedDescription: descData,
+      coordinates, // [ [lat, lon], ... ]
+    };
+  });
+
+  return parsed;
+}
 
 export default function DeliveryZonesPage() {
-  const [storeUuid, setStoreUuid] = useState("")
-  const [zones, setZones] = useState<DeliveryZone[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
+  // storeName (user-friendly) + resolved selected store
+  const [storeName, setStoreName] = useState(""); // <-- user types the store name
+  const [stores, setStores] = useState<{ uuid: string; storeName: string }[]>([]); // fetched stores list
+  const [selectedStoreUuid, setSelectedStoreUuid] = useState<string | null>(null); // resolved uuid
+
+  // control dropdown visibility
+  const [showSuggestions, setShowSuggestions] = useState(true);
+
+  const [zones, setZones] = useState<DeliveryZone[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   // Modal state
-  const [showModal, setShowModal] = useState(false)
-  const [editZone, setEditZone] = useState<DeliveryZone | null>(null)
+  const [showModal, setShowModal] = useState(false);
+  const [editZone, setEditZone] = useState<DeliveryZone | null>(null);
   const [form, setForm] = useState<CreateDeliveryZoneRequest>({
     zoneName: "",
     baseDeliveryFee: 0,
@@ -22,26 +112,93 @@ export default function DeliveryZonesPage() {
     isRestricted: false,
     coordinates: [[0, 0]],
     storeUuid: "",
-  })
+  });
 
-  const fetchZones = async () => {
-    if (!storeUuid.trim()) return
-    setLoading(true)
-    setError("")
-    try {
-      const data = await deliveryZoneService.getDeliveryZones(storeUuid)
-      console.log(data)
-      setZones(data)
-    } catch (err) {
-      console.error(err)
-      setError("Failed to fetch zones")
-    } finally {
-      setLoading(false)
+  // Parsed KML placemarks from uploaded file
+  const [parsedPlacemarks, setParsedPlacemarks] = useState<any[]>([]);
+  const [parsingError, setParsingError] = useState<string | null>(null);
+  const [uploadingIndex, setUploadingIndex] = useState<number | null>(null); // index being created
+
+  // --- Styles (kept same) ---
+  const styles = {
+    container: { maxWidth: "900px", margin: "0 auto", padding: "16px", fontFamily: "'Segoe UI', sans-serif" },
+    input: { padding: "8px", borderRadius: "4px", border: "1px solid #FF6600" },
+    button: { padding: "8px 16px", borderRadius: "4px", border: "none", backgroundColor: "#FF6600", color: "#fff", cursor: "pointer" },
+    table: { width: "100%", borderCollapse: "collapse" as const },
+    th: { border: "1px solid #FF6600", padding: "8px", backgroundColor: "#FF6600", color: "#fff" },
+    td: { border: "1px solid #FF6600", padding: "8px", backgroundColor: "#fff", color: "#333" },
+    modalOverlay: { position: "fixed" as const, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center" },
+    modalContent: { backgroundColor: "#fff",  padding: "24px",  borderRadius: "8px", width: "550px", maxHeight: "80vh", overflowY: "auto", overflowX:"hidden" },
+    modalInput: { padding: "8px", borderRadius: "4px", border: "1px solid #FF6600" },
+    modalButton: { padding: "8px 16px", borderRadius: "4px", border: "none", backgroundColor: "#FF6600", color: "#fff", cursor: "pointer" },
+    coordinateRow: { display: "flex", gap: "8px", alignItems: "center", marginBottom: "8px" },
+    coordinateInput: { width: "100px", padding: "6px", borderRadius: "4px", border: "1px solid #FF6600" },
+    removeCoordBtn: { padding: "4px 8px", borderRadius: "4px", border: "none", backgroundColor: "#FF6600", color: "#fff", cursor: "pointer" , marginRight: "8px"},
+    label: { display: "flex", flexDirection: "column", marginBottom: "8px", fontWeight: "bold" }
+  };
+
+  // Fetch stores list once (for resolving storeName -> storeUuid)
+  useEffect(() => {
+    let mounted = true;
+    const loadStores = async () => {
+      try {
+        const res = await apiService.getStores(); // uses your existing api client
+        // res likely is Store[]; map to { uuid, storeName } shape
+        if (!mounted) return;
+        const mapped = (res as any[]).map((s) => ({ uuid: s.uuid ?? s.storeUuid ?? s.storeId ?? s.id, storeName: s.storeName ?? s.name ?? s.store_name ?? s.name }));
+        setStores(mapped);
+      } catch (err) {
+        console.warn("Failed to fetch stores for name resolution", err);
+      }
+    };
+    loadStores();
+    return () => { mounted = false; };
+  }, []);
+
+  // Resolve selected store UUID when user picks/enters a storeName
+  useEffect(() => {
+    if (!storeName.trim()) {
+      setSelectedStoreUuid(null);
+      return;
     }
-  }
+    // try exact match first, case-insensitive
+    const exact = stores.find((s) => s.storeName?.toLowerCase() === storeName.trim().toLowerCase());
+    if (exact) {
+      setSelectedStoreUuid(exact.uuid);
+      return;
+    }
+    // try prefix match
+    const prefix = stores.find((s) => s.storeName?.toLowerCase().startsWith(storeName.trim().toLowerCase()));
+    if (prefix) {
+      setSelectedStoreUuid(prefix.uuid);
+      return;
+    }
+    // no match
+    setSelectedStoreUuid(null);
+  }, [storeName, stores]);
+
+  // Fetch zones - same as before but uses selectedStoreUuid now
+  const fetchZones = async () => {
+    if (!selectedStoreUuid) {
+      setError("Please select a store (by name) before fetching zones");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const data = await deliveryZoneService.getDeliveryZones(selectedStoreUuid);
+      console.log(data);
+      setZones(data);
+    } catch (err) {
+      console.error(err);
+      setError("Failed to fetch zones");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const openAddModal = () => {
-    setEditZone(null)
+    setEditZone(null);
     setForm({
       zoneName: "",
       baseDeliveryFee: 0,
@@ -50,13 +207,13 @@ export default function DeliveryZonesPage() {
       estimatedPreparationTime: 0,
       isRestricted: false,
       coordinates: [[0, 0]],
-      storeUuid,
-    })
-    setShowModal(true)
-  }
+      storeUuid: selectedStoreUuid ?? "",
+    });
+    setShowModal(true);
+  };
 
   const openEditModal = (zone: DeliveryZone) => {
-    setEditZone(zone)
+    setEditZone(zone);
     setForm({
       zoneName: zone.zoneName,
       baseDeliveryFee: zone.baseDeliveryFee,
@@ -66,89 +223,336 @@ export default function DeliveryZonesPage() {
       isRestricted: zone.isRestricted,
       coordinates: zone.coordinates,
       storeUuid: zone.storeUuid,
-    })
-    setShowModal(true)
-  }
+    });
+
+    // Also pre-fill the top store input (if we know the store name)
+    if (zone.storeUuid) {
+      setSelectedStoreUuid(zone.storeUuid);
+      const matched = stores.find((s) => s.uuid === zone.storeUuid);
+      if (matched) {
+        setStoreName(matched.storeName);
+      }
+    }
+
+    // hide suggestions when editing
+    setShowSuggestions(false);
+
+    setShowModal(true);
+  };
 
   const handleDelete = async (zone: DeliveryZone) => {
-    console.log("Full zone object:", zone)
-    if (!zone.zoneId) return
-    if (!confirm(`Delete zone "${zone.zoneName}"?`)) return
+    console.log("Full zone object:", zone);
+    if (!zone.zoneId) return;
+    if (!confirm(`Delete zone "${zone.zoneName}"?`)) return;
     try {
-      setLoading(true)
-      await deliveryZoneService.deleteDeliveryZone(zone.zoneId.toString())
-      await fetchZones()
+      setLoading(true);
+      await deliveryZoneService.deleteDeliveryZone(zone.zoneId.toString());
+      await fetchZones();
     } catch (err) {
-      console.error(err)
-      setError("Failed to delete zone")
+      console.error(err);
+      setError("Failed to delete zone");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const handleSubmit = async () => {
     try {
-      setLoading(true)
-      if (editZone?.zoneId) {
-        await deliveryZoneService.updateDeliveryZone(editZone.zoneId.toString(), form)
-      } else {
-        await deliveryZoneService.createDeliveryZone(form)
+      setLoading(true);
+      // ensure form.storeUuid is set (prefer form, else selectedStoreUuid)
+      const payload = { ...form, storeUuid: form.storeUuid || selectedStoreUuid || "" };
+      if (!payload.storeUuid) {
+        alert("Store UUID is missing. Please select a store name first.");
+        setLoading(false);
+        return;
       }
-      setShowModal(false)
-      await fetchZones()
+      if (editZone?.zoneId) {
+        await deliveryZoneService.updateDeliveryZone(editZone.zoneId.toString(), payload);
+      } else {
+        await deliveryZoneService.createDeliveryZone(payload);
+      }
+      setShowModal(false);
+      await fetchZones();
     } catch (err) {
-      console.error(err)
-      setError("Failed to save zone")
+      console.error(err);
+      setError("Failed to save zone");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const handleCoordinateChange = (index: number, latOrLng: 0 | 1, value: number) => {
-    const newCoords = [...form.coordinates]
-    newCoords[index][latOrLng] = value
-    setForm({ ...form, coordinates: newCoords })
-  }
+    const newCoords = [...form.coordinates];
+    newCoords[index][latOrLng] = value;
+    setForm({ ...form, coordinates: newCoords });
+  };
 
   const addCoordinate = () => {
-    setForm({ ...form, coordinates: [...form.coordinates, [0, 0]] })
-  }
+    setForm({ ...form, coordinates: [...form.coordinates, [0, 0]] });
+  };
 
   const removeCoordinate = (index: number) => {
-    const newCoords = form.coordinates.filter((_, i) => i !== index)
-    setForm({ ...form, coordinates: newCoords })
-  }
+    const newCoords = form.coordinates.filter((_, i) => i !== index);
+    setForm({ ...form, coordinates: newCoords });
+  };
 
-  // --- Styles ---
-  const styles = {
-    container: { maxWidth: "900px", margin: "0 auto", padding: "16px", fontFamily: "'Segoe UI', sans-serif" },
-    input: { padding: "8px", borderRadius: "4px", border: "1px solid #ffa500" },
-    button: { padding: "8px 16px", borderRadius: "4px", border: "none", backgroundColor: "#ffa500", color: "#fff", cursor: "pointer" },
-    table: { width: "100%", borderCollapse: "collapse" as const },
-    th: { border: "1px solid #ffa500", padding: "8px", backgroundColor: "#ffa500", color: "#fff" },
-    td: { border: "1px solid #ffa500", padding: "8px", backgroundColor: "#fff", color: "#333" },
-    modalOverlay: { position: "fixed" as const, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center" },
-    modalContent: { backgroundColor: "#fff",  padding: "24px",  borderRadius: "8px", width: "550px", maxHeight: "80vh", overflowY: "auto", overflowX:"hidden" },
-    modalInput: { padding: "8px", borderRadius: "4px", border: "1px solid #ffa500" },
-    modalButton: { padding: "8px 16px", borderRadius: "4px", border: "none", backgroundColor: "#ffa500", color: "#fff", cursor: "pointer" },
-    coordinateRow: { display: "flex", gap: "8px", alignItems: "center", marginBottom: "8px" },
-    coordinateInput: { width: "100px", padding: "6px", borderRadius: "4px", border: "1px solid #ffa500" },
-    removeCoordBtn: { padding: "4px 8px", borderRadius: "4px", border: "none", backgroundColor: "#ff4500", color: "#fff", cursor: "pointer" },
-    label: { display: "flex", flexDirection: "column", marginBottom: "8px", fontWeight: "bold" }
-  }
+  // --- KML Upload handler ---
+  const handleFileUpload = async (file: File | null) => {
+    setParsingError(null);
+    setParsedPlacemarks([]);
+    if (!file) return;
+    const text = await file.text();
+    try {
+      const parsed = parseKmlToPlacemarks(text);
+      if (parsed.length === 0) setParsingError("No placemarks found in KML");
+      setParsedPlacemarks(parsed);
+    } catch (err) {
+      console.error(err);
+      setParsingError("Failed to parse KML");
+    }
+  };
+
+  // Populate modal form from parsed placemark (and open modal)
+  const reviewPlacemark = (pm: any) => {
+    const coords = pm.coordinates.length ? pm.coordinates : [[0, 0]];
+    const createReq: CreateDeliveryZoneRequest = {
+      zoneName: pm.parsedDescription?.zoneName ?? pm.name ?? "Imported Zone",
+      baseDeliveryFee: Number(pm.parsedDescription?.baseDeliveryFee ?? 0),
+      perMileFee: Number(pm.parsedDescription?.perMileFee ?? 0),
+      minOrderAmount: Number(pm.parsedDescription?.minOrderAmount ?? 0),
+      estimatedPreparationTime: Number(pm.parsedDescription?.estimatedPreparationTime ?? 0),
+      isRestricted: Boolean(pm.parsedDescription?.isRestricted ?? false),
+      coordinates: coords, // already [lat, lng]
+      storeUuid: selectedStoreUuid ?? form.storeUuid ?? "", // <-- use selected store uuid
+    };
+    setEditZone(null);
+    setForm(createReq);
+    setShowModal(true);
+  };
+
+  // Direct create from placemark without opening modal
+  const createFromPlacemark = async (pm: any, idx: number) => {
+    const resolvedUuid = selectedStoreUuid;
+    if (!resolvedUuid) {
+      alert("Please select a store (by name) before creating zones.");
+      return;
+    }
+    const coords = pm.coordinates.length ? pm.coordinates : [[0, 0]];
+    const createReq: CreateDeliveryZoneRequest = {
+      zoneName: pm.parsedDescription?.zoneName ?? pm.name ?? `Imported Zone ${idx + 1}`,
+      baseDeliveryFee: Number(pm.parsedDescription?.baseDeliveryFee ?? 0),
+      perMileFee: Number(pm.parsedDescription?.perMileFee ?? 0),
+      minOrderAmount: Number(pm.parsedDescription?.minOrderAmount ?? 0),
+      estimatedPreparationTime: Number(pm.parsedDescription?.estimatedPreparationTime ?? 0),
+      isRestricted: Boolean(pm.parsedDescription?.isRestricted ?? false),
+      coordinates: coords,
+      storeUuid: resolvedUuid,
+    };
+
+    try {
+      setUploadingIndex(idx);
+      await deliveryZoneService.createDeliveryZone(createReq);
+      // refresh zones
+      await fetchZones();
+      // remove created placemark from UI
+      setParsedPlacemarks((prev) => prev.filter((_, i) => i !== idx));
+    } catch (err) {
+      console.error(err);
+      alert("Failed to create delivery zone from placemark");
+    } finally {
+      setUploadingIndex(null);
+    }
+  };
+
+  // Handle bulk create (all parsed)
+  const createAllPlacemarks = async () => {
+    if (!selectedStoreUuid) {
+      alert("Please select a store (by name) before creating zones.");
+      return;
+    }
+    for (let i = 0; i < parsedPlacemarks.length; i++) {
+      // await sequentially to avoid flooding backend; you can parallelize if desired
+      // eslint-disable-next-line no-await-in-loop
+      await createFromPlacemark(parsedPlacemarks[i], i);
+    }
+  };
+
+  // utility: filter store names for dropdown suggestions
+  const storeSuggestions = storeName.trim()
+    ? stores.filter((s) => s.storeName.toLowerCase().includes(storeName.trim().toLowerCase()))
+    : stores.slice(0, 10);
 
   return (
     <div style={styles.container}>
-      <h2 style={{ color: "#ffa500" }}>Delivery Zones</h2>
+      <h2 style={{ color: "#FF6600" }}>Delivery Zones</h2>
 
-      {/* Search */}
-      <div style={{ display: "flex", marginBottom: "16px", gap: "8px" }}>
-        <input type="text" placeholder="Enter Store UUID" value={storeUuid} onChange={(e) => setStoreUuid(e.target.value)} style={{ ...styles.input, flex: 1 }}  />
-        <button onClick={fetchZones} style={styles.button}>Search</button>
+      {/* Store name input + Search / Upload Row */}
+      <div style={{ display: "flex", marginBottom: "16px", gap: "8px", alignItems: "center" }}>
+        <div style={{ position: "relative", flex: 1 }}>
+          <input
+            type="text"
+            placeholder="Type or pick Store Name"
+            value={storeName}
+            onChange={(e) => {
+              setStoreName(e.target.value);
+              // show suggestions again on change
+              setShowSuggestions(true);
+            }}
+            // show suggestions on focus, hide on blur (with slight delay to allow click)
+            onFocus={() => setShowSuggestions(true)}
+            onBlur={() => {
+              // small timeout to allow click on suggestion before hiding
+              setTimeout(() => setShowSuggestions(false), 150);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                // attempt resolution (exact then prefix) and hide suggestions
+                const candidate = stores.find((s) => s.storeName?.toLowerCase() === storeName.trim().toLowerCase())
+                  ?? stores.find((s) => s.storeName?.toLowerCase().startsWith(storeName.trim().toLowerCase()));
+                if (candidate) {
+                  setSelectedStoreUuid(candidate.uuid);
+                  setStoreName(candidate.storeName);
+                  alert(`Resolved store "${candidate.storeName}"`);
+                } else {
+                  setSelectedStoreUuid(null);
+                  alert("Store not found. Please select from suggestions or add the store in backend.");
+                }
+                setShowSuggestions(false);
+              }
+            }}
+            style={{ ...styles.input, width: "100%" }}
+            aria-label="Store Name"
+          />
+          {/* Suggestions dropdown */}
+          {storeSuggestions.length > 0 && storeName.trim() !== "" && showSuggestions && (
+            <div style={{ position: "absolute", top: "42px", left: 0, right: 0, background: "#fff", border: "1px solid #ddd", zIndex: 30, maxHeight: "200px", overflowY: "auto" }}>
+              {storeSuggestions.map((s, i) => (
+                <div
+                  key={i}
+                  onMouseDown={(ev) => {
+                    // onMouseDown instead of onClick to avoid race with input blur
+                    ev.preventDefault();
+                    setStoreName(s.storeName);
+                    setSelectedStoreUuid(s.uuid);
+                    setShowSuggestions(false);
+                  }}
+                  style={{ padding: "8px", cursor: "pointer", borderBottom: "1px solid #f1f1f1" }}
+                >
+                  {s.storeName}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: "flex", gap: "8px" }}>
+          <button
+            onClick={() => {
+              // immediate resolution attempt; notify user if not resolved
+              if (!storeName.trim()) {
+                alert("Please type store name to resolve.");
+                return;
+              }
+              const match = stores.find((s) => s.storeName.toLowerCase() === storeName.trim().toLowerCase());
+              if (match) {
+                setSelectedStoreUuid(match.uuid);
+                setShowSuggestions(false);
+                alert(`Resolved store "${match.storeName}"`);
+              } else {
+                setSelectedStoreUuid(null);
+                setShowSuggestions(false);
+                alert("Store not found. Please select from suggestions or add the store in backend.");
+              }
+            }}
+            style={{ ...styles.button }}
+          >
+            Resolve Store
+          </button>
+
+          <button onClick={fetchZones} style={styles.button}>Fetch Zones</button>
+
+          {/* Upload KML */}
+          <label
+            style={{
+              marginLeft: "8px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "10px",
+              backgroundColor: "#FF6600",
+              border: "solid",
+              borderRadius: "8px",
+              padding: "10px 16px",
+              cursor: "pointer",
+              transition: "all 0.2s ease-in-out",
+            }}
+            onMouseOver={(e) => (e.currentTarget.style.borderColor = "#000000")}
+            onMouseOut={(e) => (e.currentTarget.style.borderColor = "#ffffff")}
+          >
+            <span style={{ color: "#000000", fontWeight: "500" }}>Choose File</span>
+            <input
+              type="file"
+              accept=".kml"
+              onChange={(e) =>
+                handleFileUpload(e.target.files ? e.target.files[0] : null)
+              }
+              style={{ display: "none" }}
+            />
+          </label>
+
+        </div>
+      </div>
+
+      {/* show selected resolved uuid for clarity */}
+      <div style={{ marginBottom: "12px", color: selectedStoreUuid ? "#2f855a" : "#c53030" }}>
+        {selectedStoreUuid ? `Selected Store UUID: ${selectedStoreUuid}` : "No store selected or resolved"}
       </div>
 
       {/* Add button */}
       <button onClick={openAddModal} style={{ ...styles.button, marginBottom: "16px" }}>Add Delivery Zone</button>
+
+      {/* Parsed placemarks preview */}
+      {parsingError && <p style={{ color: "red" }}>{parsingError}</p>}
+      {parsedPlacemarks.length > 0 && (
+        <div style={{ marginBottom: "16px" }}>
+          <h3 style={{ marginBottom: "8px" }}>Imported Placemarks ({parsedPlacemarks.length})</h3>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            {parsedPlacemarks.map((pm, idx) => (
+              <div key={idx} style={{ border: "1px solid #ddd", padding: "12px", borderRadius: "6px", background: "#fff" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div>
+                    <strong>{pm.parsedDescription?.zoneName ?? pm.name ?? `Placemark ${idx + 1}`}</strong>
+                    <div style={{ fontSize: "13px", color: "#666" }}>{pm.parsedDescription?.notes ? (Array.isArray(pm.parsedDescription.notes) ? pm.parsedDescription.notes.join("; ") : pm.parsedDescription.notes) : pm.rawDescription}</div>
+                    <div style={{ marginTop: "8px", fontSize: "13px" }}>
+                      <div><strong>Base Fee:</strong> {pm.parsedDescription?.baseDeliveryFee ?? 0}</div>
+                      <div><strong>Per Mile Fee:</strong> {pm.parsedDescription?.perMileFee ?? 0}</div>
+                      <div><strong>Min Order:</strong> {pm.parsedDescription?.minOrderAmount ?? 0}</div>
+                      <div><strong>Est Prep:</strong> {pm.parsedDescription?.estimatedPreparationTime ?? 0} mins</div>
+                      <div><strong>Restricted:</strong> {pm.parsedDescription?.isRestricted ? "Yes" : "No"}</div>
+                      <div><strong>Coordinates:</strong> {pm.coordinates.length} points</div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    <button style={styles.modalButton} onClick={() => reviewPlacemark(pm)}>Review & Edit</button>
+                    <button
+                      style={{ ...styles.modalButton, backgroundColor: "#38a169" }}
+                      onClick={() => createFromPlacemark(pm, idx)}
+                      disabled={uploadingIndex === idx}
+                    >
+                      {uploadingIndex === idx ? "Creating..." : "Create Now"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+            <div style={{ marginTop: "8px" }}>
+              <button style={{ ...styles.button, marginRight: "8px" }} onClick={createAllPlacemarks}>Create All</button>
+              <button style={{ ...styles.modalButton, backgroundColor: "#aaa" }} onClick={() => { setParsedPlacemarks([]); }}>Clear List</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Zones Table */}
       {loading && <p>Loading...</p>}
@@ -190,7 +594,7 @@ export default function DeliveryZonesPage() {
       {showModal && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalContent}>
-            <h3 style={{ color: "#ffa500" }}>{editZone ? "Edit Zone" : "Add Delivery Zone"}</h3>
+            <h3 style={{ color: "#FF6600" }}>{editZone ? "Edit Zone" : "Add Delivery Zone"}</h3>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginTop: "12px" }}>
               <label style={styles.label}>
@@ -225,7 +629,7 @@ export default function DeliveryZonesPage() {
 
               <label style={styles.label}>
                 Store UUID:
-                <input value={form.storeUuid} readOnly style={{ ...styles.modalInput, backgroundColor: "#eee", cursor: "not-allowed" }} />
+                <input value={form.storeUuid || selectedStoreUuid || ""} readOnly style={{ ...styles.modalInput, backgroundColor: "#eee", cursor: "not-allowed" }} />
               </label>
             </div>
 
@@ -256,5 +660,5 @@ export default function DeliveryZonesPage() {
         </div>
       )}
     </div>
-  )
+  );
 }

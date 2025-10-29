@@ -15,14 +15,35 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, product, o
   const [formData, setFormData] = useState<Partial<Product>>({});
 
   useEffect(() => {
-    if (product) setFormData(product);
-    else setFormData({});
+    if (product) {
+      setFormData(product);
+    } else {
+      // Defaults for new product
+      setFormData({
+        productName: "",
+        description: "",
+        brand: "",
+        categoryName: "",
+        taxCategory: "General",
+        isAlcoholic: false,
+        isGlutenFree: false,
+        isKosher: false,
+        isWine: false,
+        hasTobacco: false,
+        hasCannabis: false,
+        isReturnable: true,
+        isPerishable: false,
+        allergenInfo: "",
+        nutritionalInfo: "",
+        isActive: true, // default active for newly created products
+      });
+    }
   }, [product]);
 
   if (!isOpen) return null;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value, type, checked } = e.target;
+    const { name, value, type, checked } = e.target as HTMLInputElement;
     setFormData((prev) => ({
       ...prev,
       [name]: type === "checkbox" ? checked : value,
@@ -30,12 +51,14 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, product, o
   };
 
   const handleSave = async () => {
-    console.log("Saving product:", formData); // <-- check here
+    console.log("Saving product:", formData);
     try {
       let savedProduct: Product;
       if (product?.uuid) {
         // update existing
         savedProduct = await apiService.updateProduct(product.uuid, formData);
+        console.log("formdata",formData.isActive);
+        console.log(product.isActive);
       } else {
         // create new
         savedProduct = await apiService.createProduct(formData);
@@ -95,46 +118,61 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, product, o
           />
 
           {/* Optional booleans */}
-          <div className="flex flex-wrap gap-2">
-            <label>
+          <div className="flex flex-wrap gap-4 items-center">
+            <label className="flex items-center gap-2">
               <input
                 type="checkbox"
                 name="isAlcoholic"
-                checked={formData.isAlcoholic || false}
+                checked={!!formData.isAlcoholic}
                 onChange={handleChange}
-              /> Alcoholic
+              />
+              Alcoholic
             </label>
-            <label>
+            <label className="flex items-center gap-2">
               <input
                 type="checkbox"
                 name="isGlutenFree"
-                checked={formData.isGlutenFree || false}
+                checked={!!formData.isGlutenFree}
                 onChange={handleChange}
-              /> Gluten Free
+              />
+              Gluten Free
             </label>
-            <label>
+            <label className="flex items-center gap-2">
               <input
                 type="checkbox"
                 name="isKosher"
-                checked={formData.isKosher || false}
+                checked={!!formData.isKosher}
                 onChange={handleChange}
-              /> Kosher
+              />
+              Kosher
             </label>
-            <label>
+            <label className="flex items-center gap-2">
               <input
                 type="checkbox"
                 name="isReturnable"
                 checked={formData.isReturnable ?? true}
                 onChange={handleChange}
-              /> Returnable
+              />
+              Returnable
             </label>
-            <label>
+            <label className="flex items-center gap-2">
               <input
                 type="checkbox"
                 name="isPerishable"
                 checked={formData.isPerishable ?? false}
                 onChange={handleChange}
-              /> Perishable
+              />
+              Perishable
+            </label>
+            {/* Active checkbox */}
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                name="active"
+                checked={formData.isActive ?? true}
+                onChange={handleChange}
+              />
+              Active
             </label>
           </div>
         </div>

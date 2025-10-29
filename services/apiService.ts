@@ -1,126 +1,10 @@
 // src/services/api.ts (updated)
+import { apiCall, setToken,setRefreshToken,clearToken } from "./api";
 import { Product, PackageUnit, Role, TopPick, User, Store, StoreItemDTO, StoreReportItemDTO, PageResponse,
-  OfferDetailRequest, OfferDetailResponse
+  OfferDetailRequest, OfferDetailResponse, Order, LoginResponse, Brand, DeliveryZone, Category
  } from "./types";
 
-export const API_BASE_URL = "http://localhost:8080";
 
-// --- Token Helpers ---
-export const getToken = (): string | null => typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
-export const setToken = (token: string): void => { if (typeof window !== "undefined") localStorage.setItem("auth_token", token); };
-export const getRefreshToken = (): string | null => typeof window !== "undefined" ? localStorage.getItem("refresh_token") : null;
-export const setRefreshToken = (token: string): void => { if (typeof window !== "undefined") localStorage.setItem("refresh_token", token); };
-export const clearToken = (): void => { if (typeof window !== "undefined") { localStorage.removeItem("auth_token"); localStorage.removeItem("refresh_token"); } };
-
-// helper to detect auth/public endpoints where access token should NOT be sent
-const isAuthEndpoint = (endpoint: string) => {
-  // normalize (endpoint might include querystring) and check the path start
-  const path = endpoint.split('?')[0].toLowerCase();
-  return path === '/auth/login' || path === '/auth/refresh-token' || path.startsWith('/auth/');
-};
-
-// --- Refresh Token Handler ---
-async function refreshToken(): Promise<void> {
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) throw new Error("No refresh token available");
-
-  const response = await fetch(`${API_BASE_URL}/auth/refresh-token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${refreshToken}` },
-    // If your backend expects the refresh token in the body instead, change to:
-    // body: JSON.stringify({ refreshToken })
-  });
-
-  if (!response.ok) {
-    clearToken();
-    throw new Error("Failed to refresh token");
-  }
-
-  const data = await response.json() as { token: string; refreshToken: string; expiresIn: number };
-  setToken(data.token);
-  setRefreshToken(data.refreshToken);
-}
-
-// --- Generic API Call ---
-// note: this function will not attach the access token for auth endpoints (login/refresh)
-export async function apiCall<T>(method: string, endpoint: string, body?: unknown, retry = true): Promise<T> {
-  const headers: HeadersInit = { "Content-Type": "application/json" };
-
-  // Only attach the access token for non-auth endpoints
-  try {
-    if (!isAuthEndpoint(endpoint)) {
-      const token = getToken();
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-    }
-  } catch (err) {
-    // Defensive: localStorage might throw in some environments; ignore and proceed
-    console.debug("apiCall: token read error", err);
-  }
-
-  const options: RequestInit = { method, headers };
-  if (body !== undefined && body !== null) options.body = JSON.stringify(body);
-
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
-
-  if (!response.ok) {
-    if (response.status === 401 && retry) {
-      // attempt refresh only when the call was protected (non-auth) — but safe to try anyway
-      try {
-        await refreshToken();
-        return apiCall<T>(method, endpoint, body, false);
-      } catch (refreshErr) {
-        clearToken();
-        throw new Error("Unauthorized. Please login again.");
-      }
-    }
-
-    const parsed = await response.json().catch(() => null);
-    const msg = parsed?.message || parsed?.error || `API Error: ${response.status} ${response.statusText}`;
-    throw new Error(msg);
-  }
-
-  // no content
-  if (response.status === 204 || response.headers.get("content-length") === "0") return {} as T;
-  const text = await response.text();
-  if (!text) return {} as T;
-  try { return JSON.parse(text) as T; } 
-  catch { return (text as unknown) as T; }
-}
-
-// --- Small api wrapper ---
-export const api = {
-  get: <T = any>(endpoint: string) => apiCall<T>("GET", endpoint),
-  post: <T = any>(endpoint: string, body?: unknown) => apiCall<T>("POST", endpoint, body),
-  put: <T = any>(endpoint: string, body?: unknown) => apiCall<T>("PUT", endpoint, body),
-  patch: <T = any>(endpoint: string, body?: unknown) => apiCall<T>("PATCH", endpoint, body),
-  delete: <T = any>(endpoint: string, body?: unknown) => apiCall<T>("DELETE", endpoint, body),
-};
-
-// --- Interfaces ---
-export interface LoginResponse { token: string; refreshToken: string; id: string; email: string; role: string }
-
-export interface UserCreationData { name: string; email: string; password?: string; mobileNumber?: string; roleName: 'ADMIN' | 'SUPER_ADMIN' | 'STORE_OWNER' | 'USER'; }
-export interface Order { id: string; shortID?: string; customer: string; amount: number; status: string; date: string }
-export interface Brand { id: string; name: string }
-export interface Category { id: string; name: string; description: string }
-export interface Report { store: string; orders: number; revenue: number; date: string }
-export interface DeliveryZone { zoneId:number; zoneName: string; baseDeliveryFee: number; perMileFee: number; minOrderAmount: number; estimatedPreparationTime: number; isRestricted: boolean; coordinates: number[][]; storeUuid: string }
-export interface OrderResponseDTO {
-  orderUuid: string; userUuid: string; userName: string; userEmail: string; address: string; mobileNumber: string;
-  orderStatus: "CREATED" | "PAYMENT_PENDING" | "ACCEPTED_BY_STORE" | "PARTIALLY_ACCEPTED_BY_STORE"
-    | "SCHEDULED" | "READY_TO_PICKUP" | "CANCELLED_BY_CUSTOMER" | "OUT_FOR_DELIVERY"
-    | "PARTIAL_DELIVERED" | "CANCELLED_BY_STORE" | "PARTIALLY_CANCELLED" | "DAMAGED"
-    | "DELIVERED" | "REFUNDED" | "PARTIALLY_REFUNDED";
-  paymentStatus: "PAYMENT_INITIATED" | "PAYMENT_PENDING" | "PAYMENT_PROCESSING" | "PAYMENT_SUCCESS"
-    | "PAYMENT_FAILED" | "REFUNDED" | "PARTIALLY_REFUNDED" | "REFUND_INITIATED"
-    | "PARTIALLY_REFUND_INITIATED" | "STRIPE_ACCOUNT_NOT_CONNECTED" | "PAYMENT_ENQUEUED";
-  subtotal: number; totalTax: number; totalStoreDiscount: number; totalSipstrDiscount: number;
-  totalDeliveryFee: number; serviceFee: number; tip: number; totalCheckoutBagFee: number; totalBottleDepositFee: number;
-  originalTotal: number; adjustedTotal: number; differenceTotal: number; itemOrderedCount: number; totalQuantity: number;
-  specialInstructions: string; estimatedDeliveryTime: string; actualDeliveryTime: string; isScheduled: boolean;
-  scheduledTime: string; refundStatus?: string; orderInitiatedAt?: string; deliveredAt?: string; orderedAt?: string; refundedAt?: string;
-  clientSecret?: string; deliveryOtp?: string; stores: StoreItemDTO[];
-}
 
 // --- API Service ---
 export const apiService = {
@@ -134,14 +18,14 @@ export const apiService = {
   logout: () => clearToken(),
 
   // --- Users ---
-  createAdmin: async (data: Omit<UserCreationData,'roleName'>) => apiCall<User>("POST","/users",{...data, roleName:'ADMIN'}),
+  createAdmin: async (data: Omit<User,'roleName'>) => apiCall<User>("POST","/users",{...data, roleName:'ADMIN'}),
   getUsers: async (page: number = 0, size: number = 10) => {
     const qs = `?page=${encodeURIComponent(page)}&size=${encodeURIComponent(size)}`;
     return apiCall<User[]>("GET", `/users${qs}`);
   },
   getUserByUuid: async (uuid: string) => apiCall<User>("GET", `/users/${uuid}`),
   createUser: async (
-    data: Omit<UserCreationData, "roleName">,
+    data: Omit<User, "roleName">,
     roleName: "CUSTOMER" | "STORE_OWNER" | "ADMIN" = "CUSTOMER"
   ) => apiCall<User>("POST", "/users", { ...data, roleName }),
   updateUser: async (uuid: string, data: Partial<User>) => {
@@ -151,7 +35,7 @@ export const apiService = {
   deleteUser: async (uuid: string) => apiCall<void>("DELETE", `/users/${uuid}`),
 
   // --- Orders ---
-  getTrackedOrder: async (orderShortId: string) => apiCall<OrderResponseDTO>("GET", `/orders/track?${new URLSearchParams({ orderShortId })}`),
+  getTrackedOrder: async (orderShortId: string) => apiCall<Order>("GET", `/orders/track?${new URLSearchParams({ orderShortId })}`),
   refundOrderFull: async (shortId: string) => apiCall<void>("POST","/orders/refund",{orderShortId:shortId}),
   refundOrderPartial: async (shortId: string, itemIds: number[]) => apiCall<void>("POST","/orders/refund/partial",{orderShortId:shortId,itemIds}),
   updateOrderStatus: async (id: string, status: string) => apiCall<Order>("PUT","/orders/update-status",{id,status}),
@@ -194,7 +78,8 @@ export const apiService = {
       isReturnable: true,
       isPerishable: false,
       allergenInfo: "",
-      nutritionalInfo: ""
+      nutritionalInfo: "",
+      active:data.isActive
     }),
 
   updateProduct: async (uuid: string, data: Partial<Product>) => apiCall<Product>("PATCH", `/products/${uuid}`, data),

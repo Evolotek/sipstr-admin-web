@@ -1,9 +1,9 @@
 // src/services/types.ts
-export interface LoginResponse {
-  token: string;
-  id: string;
-  email: string;
-  role: string;
+export interface LoginResponse { 
+  token: string; 
+  refreshToken: string; 
+  id: string; 
+  email: string; role: string 
 }
 
 export interface User {
@@ -15,16 +15,6 @@ export interface User {
   mobileNumber?: string
   dob?: string // Use ISO string when sending to backend (e.g., "2003-05-21")
   roleName: "CUSTOMER" | "STORE_OWNER" | "ADMIN"
-}
-
-
-export interface Order {
-  id: string;
-  shortID?: string;
-  customer: string;
-  amount: number;
-  status: string;
-  date: string;
 }
 
 export interface ProductPage {
@@ -71,28 +61,22 @@ export interface Product {
   isPerishable?: boolean;
   allergenInfo?: string;
   nutritionalInfo?: string;
+  isActive?: boolean;
   productId: number;
   uuid: string;
   variantsDTO?: ProductVariant[];
 }
 
 
-
-export interface Brand {
-  id: string;
-  name: string;
-  description: string;
+export interface Brand { 
+  id: string; 
+  name: string 
 }
 
-export interface Category {
-  id?: string;                 // maps to backend ID if needed
-  categoryName: string;
-  description?: string;
-  imageUrl?: string;
-  displayOrder?: number;
-  isTaxable?: boolean;
-  isActive?: boolean;
-  parentCategoryId?: number | null;
+export interface Category { 
+  id: string; 
+  name: string; 
+  description: string 
 }
 
 
@@ -143,25 +127,23 @@ export interface TopPick {
 }
 
 
-export interface Report {
-  store: string;
-  orders: number;
-  revenue: number;
-  date: string;
+export interface Report { 
+  store: string; 
+  orders: number; 
+  revenue: number; 
+  date: string 
 }
 
-export interface DeliveryZone {
-  zoneId: number; // use camelCase, matches backend
-  zoneName: string;
+export interface DeliveryZone { 
+  zoneId:number; 
+  zoneName: string; 
   baseDeliveryFee: number;
-  perMileFee: number;
-  minOrderAmount: number;
-  estimatedPreparationTime: number | null;
-  isRestricted: boolean;
-  coordinates: [number, number][];
-  storeUuid: string;
-  createdAt?: string;
-  updatedAt?: string;
+  perMileFee: number; 
+  minOrderAmount: number; 
+  estimatedPreparationTime: number; 
+  isRestricted: boolean; 
+  coordinates: number[][]; 
+  storeUuid: string 
 }
 
 
@@ -176,61 +158,60 @@ export interface CreateDeliveryZoneRequest {
   storeUuid: string;
 }
 
+
 export interface StoreItemDTO {
-  storeUuid: string;
-  storeName: string;
-  storeAddress: string;
-  storePhone: string;
-  storeEmail?: string;
+  storeUuid: string
+  storeName: string
+  storeAddress: string
+  storePhone: string
+  storeEmail?: string
+  storeDeliveryFee?: number
+  items?: {
+    itemId: number
+    itemName: string
+    quantity: number
+    price: number
+    finalPrice: number
+    status: string
+  }[]
 }
 
-export type OrderStatus =
-  | "CREATED" | "PAYMENT_PENDING" | "ACCEPTED_BY_STORE" | "PARTIALLY_ACCEPTED_BY_STORE"
-  | "SCHEDULED" | "READY_TO_PICKUP" | "CANCELLED_BY_CUSTOMER" | "OUT_FOR_DELIVERY"
-  | "PARTIAL_DELIVERED" | "CANCELLED_BY_STORE" | "PARTIALLY_CANCELLED" | "DAMAGED"
-  | "DELIVERED" | "REFUNDED" | "PARTIALLY_REFUNDED";
+export interface OrderItem {
+  id: number
+  name: string
+  price: number
+}
 
-export type PaymentStatus =
-  | "PAYMENT_INITIATED" | "PAYMENT_PENDING" | "PAYMENT_PROCESSING" | "PAYMENT_SUCCESS"
-  | "PAYMENT_FAILED" | "REFUNDED" | "PARTIALLY_REFUNDED" | "REFUND_INITIATED"
-  | "PARTIALLY_REFUND_INITIATED" | "STRIPE_ACCOUNT_NOT_CONNECTED" | "PAYMENT_ENQUEUED";
-
-export interface OrderResponseDTO {
-  orderUuid: string;
-  userUuid: string;
-  userName: string;
-  userEmail: string;
-  address: string;
-  mobileNumber: string;
-  orderStatus: OrderStatus;
-  paymentStatus: PaymentStatus;
-  subtotal: number;
-  totalTax: number;
-  totalStoreDiscount: number;
-  totalSipstrDiscount: number;
-  totalDeliveryFee: number;
-  serviceFee: number;
-  tip: number;
-  totalCheckoutBagFee: number;
-  totalBottleDepositFee: number;
-  originalTotal: number;
-  adjustedTotal: number;
-  differenceTotal: number;
-  itemOrderedCount: number;
-  totalQuantity: number;
-  specialInstructions: string;
-  estimatedDeliveryTime: string;
-  actualDeliveryTime: string;
-  isScheduled: boolean;
-  scheduledTime: string;
-  refundStatus?: string;
-  orderInitiatedAt?: string;
-  deliveredAt?: string;
-  orderedAt?: string;
-  refundedAt?: string;
-  clientSecret?: string;
-  deliveryOtp?: string;
-  stores: StoreItemDTO[];
+export interface Order {
+  orderUuid: string
+  userUuid: string
+  userName: string
+  userEmail: string
+  address: string
+  mobileNumber: string
+  orderStatus: string
+  paymentStatus: string
+  subtotal: number
+  totalTax: number
+  totalStoreDiscount: number
+  totalSipstrDiscount: number
+  totalDeliveryFee: number
+  serviceFee: number
+  tip: number
+  totalCheckoutBagFee: number
+  totalBottleDepositFee: number
+  originalTotal: number
+  adjustedTotal: number
+  differenceTotal: number
+  itemOrderedCount: number
+  refundAmount: number
+  totalQuantity: number
+  specialInstructions: string
+  estimatedDeliveryTime: string
+  actualDeliveryTime?: string
+  isScheduled: boolean
+  stores: StoreItemDTO[]
+  items?: OrderItem[]
 }
 
 export interface PackageUnit {
