@@ -22,8 +22,6 @@ async function refreshToken(): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/auth/refresh-token`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${refreshToken}` },
-    // If your backend expects the refresh token in the body instead, change to:
-    // body: JSON.stringify({ refreshToken })
   });
 
   if (!response.ok) {
@@ -32,6 +30,7 @@ async function refreshToken(): Promise<void> {
   }
 
   const data = await response.json() as { token: string; refreshToken: string; expiresIn: number };
+  console.log(data);
   setToken(data.token);
   setRefreshToken(data.refreshToken);
 }
@@ -58,8 +57,7 @@ export async function apiCall<T>(method: string, endpoint: string, body?: unknow
   const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
 
   if (!response.ok) {
-    if (response.status === 401 && retry) {
-      // attempt refresh only when the call was protected (non-auth) — but safe to try anyway
+    if ((response.status === 401 || response.status === 403) && retry) {
       try {
         await refreshToken();
         return apiCall<T>(method, endpoint, body, false);

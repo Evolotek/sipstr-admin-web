@@ -4,13 +4,11 @@ import { Product, PackageUnit, Role, TopPick, User, Store, StoreItemDTO, StoreRe
   OfferDetailRequest, OfferDetailResponse, Order, LoginResponse, Brand, DeliveryZone, Category
  } from "./types";
 
-
-
 // --- API Service ---
 export const apiService = {
   // --- Auth ---
   login: async (email: string, password: string) => {
-    const res = await apiCall<LoginResponse>("POST", "/auth/login", { identifier: email, password, roleName: "ADMIN" });
+    const res = await apiCall<LoginResponse>("POST", "/auth/login", { identifier: email, password, roleName: process.env.NEXT_PUBLIC_ROLE });
     setToken(res.token);
     setRefreshToken(res.refreshToken);
     return res;

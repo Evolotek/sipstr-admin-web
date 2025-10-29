@@ -14,3 +14,6 @@ To hide Sidebar options
 Right now all are set to true
 To hide make them false 
 
+-----------------Role-------
+if Admin is not accessible
+Change role in .env.local file
