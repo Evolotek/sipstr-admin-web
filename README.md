@@ -1,8 +1,10 @@
 Open terminal in project directory and run 
-npm install
+
+"npm install"
 
 once done run 
-npm run dev 
+
+"npm run dev" 
 to start the server on port 8005
 
 Currently backend uses production url "https://api.sipstr.com"
