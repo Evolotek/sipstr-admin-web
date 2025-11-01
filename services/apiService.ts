@@ -1,7 +1,7 @@
 // src/services/api.ts (updated)
 import { apiCall, setToken,setRefreshToken,clearToken } from "./api";
 import { Product, PackageUnit, Role, TopPick, User, Store, StoreItemDTO, StoreReportItemDTO, PageResponse,
-  OfferDetailRequest, OfferDetailResponse, Order, LoginResponse, Brand, DeliveryZone, Category
+  OfferDetailRequest, OfferDetailResponse, Order, LoginResponse, Brand, DeliveryZone, Category,ProductVariant
  } from "./types";
 
 // --- API Service ---
@@ -84,9 +84,16 @@ export const apiService = {
   deleteProduct: async (uuid: string) => apiCall<void>("DELETE", `/products/${uuid}`),
 
   // --- Variants ---
-  createVariant: async (productId: number, data: unknown) => apiCall("POST", `/products/${productId}/variants`, data),
-  updateVariant: async (variantId: string, data: unknown) => apiCall("PATCH", `/products/variants/${variantId}`, data),
-  deleteVariant: async (variantId: string) => apiCall<void>("DELETE", `/products/variants/${variantId}`),
+// Assuming a type called 'ProductVariant' is available
+
+createVariant: async (productId: number, data: unknown) => 
+  apiCall<ProductVariant>("POST", `/products/${productId}/variants`, data),
+
+updateVariant: async (variantId: string, data: unknown) => 
+  apiCall<ProductVariant>("PATCH", `/products/variants/${variantId}`, data),
+  
+deleteVariant: async (variantId: string) => 
+  apiCall<void>("DELETE", `/products/variants/${variantId}`),
 
   // --- Brands ---
   getBrands: async () => apiCall<Brand[]>("GET","/brands"),
@@ -147,7 +154,8 @@ export const apiService = {
   deleteRole: async (id: string) => apiCall<void>("DELETE", `/roles/${id}`),
 
   //Role-permission
-  getRolePermissions: async () => apiCall("GET","/roles/permissions"),
+// Role-permission
+getRolePermissions: async () => apiCall<string[]>("GET","/roles/permissions"),
   addRolePermissions: async (roleId: string, permissions: string[]) =>
   apiCall( "POST",`/roles/${roleId}/permissions`,{ permissions }),
   removeRolePermission: async (roleId: string, permissions: string[]) =>

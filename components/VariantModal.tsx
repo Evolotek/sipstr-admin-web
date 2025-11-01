@@ -374,7 +374,7 @@ const VariantModal: React.FC<VariantModalProps> = ({
         // Update existing variant (no change needed)
         const variantToUpdate = variants[editingIndex];
         savedVariant = await apiService.updateVariant(
-          variantToUpdate.variantId,
+          variantToUpdate.variantId.toString(),
           currentVariant
         );
         const newVariants = [...variants];
@@ -407,7 +407,7 @@ const VariantModal: React.FC<VariantModalProps> = ({
     if (!confirm(`Are you sure you want to delete variant "${variantToDelete.packageName}"?`))
       return;
     try {
-      await apiService.deleteVariant(variantToDelete.variantId);
+      await apiService.deleteVariant(variantToDelete.variantId.toString());
       setVariants(variants.filter((_, i) => i !== index));
     } catch (err) {
       console.error(err);

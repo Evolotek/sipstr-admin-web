@@ -154,9 +154,10 @@ export interface CreateDeliveryZoneRequest {
   minOrderAmount: number;
   estimatedPreparationTime: number;
   isRestricted: boolean;
-  coordinates: [number, number][]; // [lat, lng]
+  coordinates: [number, number][]; // array of [lat, lng] tuples
   storeUuid: string;
 }
+
 
 
 export interface StoreItemDTO {
@@ -287,6 +288,8 @@ export interface CouponDetailDTO {
   maxUsagePerUser: number;
   totalUsabilityCount: number;
   usabilityOption: "MONTH" | "QUARTER" | "HALF_YEAR" | "YEAR";
+  couponId: string | number; // Assuming couponId is a string or number
+  
 }
 export interface OfferListItem {
   offerId: number;

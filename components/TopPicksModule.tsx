@@ -197,7 +197,7 @@ export function TopPicksModule() {
       <CrudTable
         columns={["ID", "Product", "Rank", "Featured", "Actions"]}
         data={topPicks.map((t) => ({
-          id: t.uuid || t.productId,
+          id: String(t.uuid || t.productId),
           cells: [t.productId, t.productName, t.rankingScore, t.isFeatured ? "✅" : "❌"],
           actions: [
             { label: "Update", onClick: () => openEditModal(t) },

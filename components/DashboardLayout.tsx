@@ -8,7 +8,7 @@ import{ UsersModule } from "./UsersModule"
 import{ OrdersModule }from "./OrdersModule"
 import ProductsModule from "./ProductsModule"
 import{ BCPModule }from "./BrandsModule"
-import{ CouponsModule }from "./CouponModule"
+// import{ CouponsModule }from "./CouponModule"
 import{ StoresModule }from "./StoresModule"
 import{ RolesModule }from "./RolesModule"
 import{ TopPicksModule }from "./TopPicksModule"
@@ -49,8 +49,8 @@ export function DashboardLayout({ session, onLogout }: DashboardLayoutProps) {
         return <ProductsModule />
       case "brands":
         return <BCPModule />
-      case "coupon":
-        return <CouponsModule />
+      // case "coupon":
+      //   return <CouponsModule />
       case "stores":
         return <StoresModule />
       case "roles":

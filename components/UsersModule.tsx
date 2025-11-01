@@ -124,7 +124,7 @@ export function UsersModule() {
   const handleCreateUser = async () => {
     const payload = {
       fullName: createForm.fullName,
-      email: createForm.email || undefined,
+      email: createForm.email ,
       mobileNumber: createForm.mobileNumber || undefined,
       password: createForm.password || undefined,
       dob: createForm.dob || undefined,

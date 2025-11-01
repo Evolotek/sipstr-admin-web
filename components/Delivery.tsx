@@ -124,18 +124,18 @@ export default function DeliveryZonesPage() {
     container: { maxWidth: "900px", margin: "0 auto", padding: "16px", fontFamily: "'Segoe UI', sans-serif" },
     input: { padding: "8px", borderRadius: "4px", border: "1px solid #FF6600" },
     button: { padding: "8px 16px", borderRadius: "4px", border: "none", backgroundColor: "#FF6600", color: "#fff", cursor: "pointer" },
-    table: { width: "100%", borderCollapse: "collapse" as const },
+    table: { width: "100%", borderCollapse: "collapse" }, // Removed unnecessary 'as const'
     th: { border: "1px solid #FF6600", padding: "8px", backgroundColor: "#FF6600", color: "#fff" },
     td: { border: "1px solid #FF6600", padding: "8px", backgroundColor: "#fff", color: "#333" },
-    modalOverlay: { position: "fixed" as const, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center" },
-    modalContent: { backgroundColor: "#fff",  padding: "24px",  borderRadius: "8px", width: "550px", maxHeight: "80vh", overflowY: "auto", overflowX:"hidden" },
+    modalOverlay: { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center" }, // Removed unnecessary 'as const'
+    modalContent: { backgroundColor: "#fff", padding: "24px", borderRadius: "8px", width: "550px", maxHeight: "80vh", overflowY: "auto", overflowX:"hidden" },
     modalInput: { padding: "8px", borderRadius: "4px", border: "1px solid #FF6600" },
     modalButton: { padding: "8px 16px", borderRadius: "4px", border: "none", backgroundColor: "#FF6600", color: "#fff", cursor: "pointer" },
     coordinateRow: { display: "flex", gap: "8px", alignItems: "center", marginBottom: "8px" },
     coordinateInput: { width: "100px", padding: "6px", borderRadius: "4px", border: "1px solid #FF6600" },
     removeCoordBtn: { padding: "4px 8px", borderRadius: "4px", border: "none", backgroundColor: "#FF6600", color: "#fff", cursor: "pointer" , marginRight: "8px"},
     label: { display: "flex", flexDirection: "column", marginBottom: "8px", fontWeight: "bold" }
-  };
+} as const; // <-- The fix is here!
 
   // Fetch stores list once (for resolving storeName -> storeUuid)
   useEffect(() => {
@@ -221,7 +221,7 @@ export default function DeliveryZonesPage() {
       minOrderAmount: zone.minOrderAmount,
       estimatedPreparationTime: zone.estimatedPreparationTime ?? 0,
       isRestricted: zone.isRestricted,
-      coordinates: zone.coordinates,
+      coordinates:zone.coordinates as [number, number][],
       storeUuid: zone.storeUuid,
     });
 
