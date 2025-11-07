@@ -8,12 +8,13 @@ import{ UsersModule } from "./UsersModule"
 import{ OrdersModule }from "./OrdersModule"
 import ProductsModule from "./ProductsModule"
 import{ BCPModule }from "./BrandsModule"
-// import{ CouponsModule }from "./CouponModule"
+import{ CouponsModule }from "./CouponModule"
 import{ StoresModule }from "./StoresModule"
 import{ RolesModule }from "./RolesModule"
 import{ TopPicksModule }from "./TopPicksModule"
 import{ ReportsModule }from "./ReportsModule"
 import DeliveryZonesPage from "./Delivery"
+// import { SubstituteModule } from "./SubstituteModule"
 
 interface DashboardLayoutProps {
   session: AdminSession
@@ -23,6 +24,7 @@ interface DashboardLayoutProps {
 type ModuleType =
   | "dashboard"
   | "users"
+  |  "substitute"
   | "orders"
   | "products"
   | "brands"
@@ -41,7 +43,9 @@ export function DashboardLayout({ session, onLogout }: DashboardLayoutProps) {
     switch (activeModule) {
       case "users":
         return <UsersModule />
-      case "orders":
+      // case "substitute":
+      //   return <SubstituteModule />
+        case "orders":
         return <OrdersModule />
       case "zones":
         return <DeliveryZonesPage />
@@ -49,8 +53,8 @@ export function DashboardLayout({ session, onLogout }: DashboardLayoutProps) {
         return <ProductsModule />
       case "brands":
         return <BCPModule />
-      // case "coupon":
-      //   return <CouponsModule />
+      case "coupon":
+        return <CouponsModule />
       case "stores":
         return <StoresModule />
       case "roles":

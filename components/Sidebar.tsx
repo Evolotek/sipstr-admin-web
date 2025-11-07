@@ -23,7 +23,8 @@ const ALL_MODULES = [
   { id: "coupon", label: "Coupon & Voucher", icon: "🎟️", flagKey: "coupon" },
   { id: "top-picks", label: "Top Picks", icon: "🌟", flagKey: "topPicks" },
   { id: "zones", label: "Zones", icon: "🗺️", flagKey: "zones" },
-  { id: "reports", label: "Reports", icon: "📈", flagKey: "reports" }
+  { id: "reports", label: "Reports", icon: "📈", flagKey: "reports" },
+  { id: "substitute", label: "Substitute", icon: "📈", flagKey: "substitute" }
 ]
 
 /**
@@ -42,6 +43,7 @@ const FEATURE_FLAGS = {
   topPicks: process.env.NEXT_PUBLIC_FEATURE_TOP_PICKS === "true",
   zones: process.env.NEXT_PUBLIC_FEATURE_ZONES === "true",
   reports: process.env.NEXT_PUBLIC_FEATURE_REPORTS === "true",
+  substitute: process.env.NEXT_PUBLIC_FEATURE_SUBSTITUTE === "true",
 }
 
 export function Sidebar({ activeModule, onModuleChange, isOpen, onToggle, session, onLogout }: SidebarProps) {

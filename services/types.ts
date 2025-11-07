@@ -184,14 +184,23 @@ export interface OrderItem {
 }
 
 export interface Order {
-  orderUuid: string
-  userUuid: string
+  // --- IDENTIFICATION & LOGISTICS (UPDATED) ---
+  orderUuid: string // The primary UUID (derived from something else, or implicitly present)
+  orderShortId: string // Matches the entity's 'shortId'
+  
+  // --- USER/ADDRESS (DERIVED) ---
+  userUuid: string 
   userName: string
   userEmail: string
   address: string
   mobileNumber: string
+
+  // --- STATUS ---
   orderStatus: string
-  paymentStatus: string
+  paymentStatus: string // Payment status comes from the Payment entity/service, not the Order entity
+  refundStatus?: string // Matches the entity field
+
+  // --- FINANCIALS ---
   subtotal: number
   totalTax: number
   totalStoreDiscount: number
@@ -201,20 +210,33 @@ export interface Order {
   tip: number
   totalCheckoutBagFee: number
   totalBottleDepositFee: number
+  refundAmount: number
   originalTotal: number
   adjustedTotal: number
   differenceTotal: number
+
+  // --- DETAILS ---
   itemOrderedCount: number
-  refundAmount: number
   totalQuantity: number
   specialInstructions: string
+  
+  // --- TIMING & SCHEDULING (UPDATED) ---
+  createdAt: string // Matches the entity's 'createdAt'
   estimatedDeliveryTime: string
   actualDeliveryTime?: string
   isScheduled: boolean
-  stores: StoreItemDTO[]
-  items?: OrderItem[]
-}
+  scheduledTime?: string // Matches the entity field
+  deliveredAt?: string // Matches the entity field
+  refundedAt?: string // Matches the entity field
 
+  // --- FULFILLMENT ---
+  deliveryOtp?: string // Matches the entity field
+  // NOTE: You still need to derive 'paymentMethod' and 'deliveryType' from the payments/services layers if needed for the UI.
+
+  // --- RELATIONS ---
+  stores: StoreItemDTO[] // Details from OrderStore/OrderStoreItem
+  items?: OrderItem[] // Flat list of all items (derived for the Partial Refund UI)
+}
 export interface PackageUnit {
   packageId: number;
   packageName: string;
@@ -281,16 +303,16 @@ export interface OfferDetailRequest {
 }
 
 export interface CouponDetailDTO {
-  id: number;
-  offerId: number;
-  code: string;
-  websiteDisplayMessage: string;
-  maxUsagePerUser: number;
-  totalUsabilityCount: number;
-  usabilityOption: "MONTH" | "QUARTER" | "HALF_YEAR" | "YEAR";
-  couponId: string | number; // Assuming couponId is a string or number
-  
+  id?: number;
+  offerId?: number;
+  code?: string;
+  websiteDisplayMessage?: string;
+  maxUsagePerUser?: number;
+  totalUsabilityCount?: number;
+  usabilityOption?: "MONTH" | "QUARTER" | "HALF_YEAR" | "YEAR";
 }
+
+
 export interface OfferListItem {
   offerId: number;
   storeId?: number | null;
@@ -308,4 +330,53 @@ export interface OfferListItem {
   isActive?: boolean;
   status?: string;
   coupons?: CouponDetailDTO | null;
+}
+
+export interface RecentOrder {
+  orderShortId: string;     
+  customerName: string;     
+  address?: string;         
+  storeTotal?: number;      
+  updatedAt?: string;       
+  deliveryTime?: string;    
+  orderStatus?: string;     
+  originalTotal?:number;
+  storeUuid?: string;
+  __raw?: any;
+}
+
+export interface SubstitutionItemRequest {
+    originalOrderItemId: number;
+    substituteStoreInventoryId: number;
+    substituteQuantity: number;
+}
+
+export interface SubstitutionRequest {
+    orderShortId: string;
+    storeUuid: string;
+    substitutions: SubstitutionItemRequest[];
+}
+
+export interface StoreInventory {
+    id: number;
+    productName: string;
+    variantName?: string;
+    inventoryCount: number;
+    supplierPrice: number;
+}
+
+// Grouped inventory DTOs returned by GET /{storeUUID}/products
+export interface StoreInventoryVariantDTO {
+  storeInventoryId: number;
+  variantId: number;
+  packageName?: string;
+  price?: number | string;   // backend BigDecimal often appears as string
+  quantity: number;          // available inventory count
+  thumbnailImageUrl?: string;
+}
+
+export interface GroupedStoreInventoryResponseDTO {
+  productName: string;
+  productId: number;
+  variants: StoreInventoryVariantDTO[];
 }

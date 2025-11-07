@@ -1,7 +1,8 @@
 // src/services/api.ts (updated)
 import { apiCall, setToken,setRefreshToken,clearToken } from "./api";
 import { Product, PackageUnit, Role, TopPick, User, Store, StoreItemDTO, StoreReportItemDTO, PageResponse,
-  OfferDetailRequest, OfferDetailResponse, Order, LoginResponse, Brand, DeliveryZone, Category,ProductVariant
+  OfferDetailRequest, OfferDetailResponse, Order, LoginResponse, Brand, DeliveryZone, Category,ProductVariant,
+  RecentOrder, SubstitutionRequest, GroupedStoreInventoryResponseDTO
  } from "./types";
 
 // --- API Service ---
@@ -35,8 +36,35 @@ export const apiService = {
   // --- Orders ---
   getTrackedOrder: async (orderShortId: string) => apiCall<Order>("GET", `/orders/track?${new URLSearchParams({ orderShortId })}`),
   refundOrderFull: async (shortId: string) => apiCall<void>("POST","/orders/refund",{orderShortId:shortId}),
-  refundOrderPartial: async (shortId: string, itemIds: number[]) => apiCall<void>("POST","/orders/refund/partial",{orderShortId:shortId,itemIds}),
+  refundOrderPartial: async (
+    shortId: string, 
+    itemIds: number[], 
+    deliveryfee: boolean, // <-- NEW
+    tip: boolean          // <-- NEW
+  ) => apiCall<void>("POST", "/orders/refund/partial", { 
+    orderShortId: shortId, 
+    itemIds,
+    deliveryfee, // <-- DTO FIELD
+    tip          // <-- DTO FIELD
+  }),
   updateOrderStatus: async (id: string, status: string) => apiCall<Order>("PUT","/orders/update-status",{id,status}),
+getRecentOrders: async (limit: number = 45): Promise<RecentOrder[]> => {
+  const params = new URLSearchParams({ limit: String(limit) });
+  const res = await apiCall<any>("GET", `/vendor/recent/all?${params.toString()}`);
+  const arr = Array.isArray(res) ? res : (res?.content ?? res?.data ?? res?.orders ?? []);
+  return (arr || []).map((r: any) => ({
+    orderShortId: r.orderShortId ?? "",
+    customerName: r.customerName ?? "",
+    address: r.address ?? "",
+    storeTotal: r.storeTotal != null ? Number(r.storeTotal) : undefined,
+    updatedAt: r.updatedAt ?? undefined,
+    deliveryTime: r.deliveryTime ?? undefined,
+    orderStatus: r.orderStatus ?? undefined,
+    __raw: r
+  }));
+},
+
+
 
   // --- Products ---
   getProducts: async (): Promise<Product[]> => {
@@ -188,12 +216,53 @@ getRolePermissions: async () => apiCall<string[]>("GET","/roles/permissions"),
     await apiCall<any>("PUT", "/update-offer-detail", offer);
   },
 
-  getConsumptionHistory: async (offerId: number): Promise<OfferDetailResponse> => {
-    return apiCall<OfferDetailResponse>(
-      "GET",
-      `/consumption-history-detail?offerId=${encodeURIComponent(String(offerId))}`
-    );
-  },
+getConsumptionHistory: async (offerId: number): Promise<OfferDetailResponse> => {
+  const raw = await apiCall<any>(
+    "GET",
+    `/consumption-history-detail?offerId=${encodeURIComponent(String(offerId))}`
+  );
+
+  // Defensive defaults
+  const usedUser = raw?.usedUser ?? raw?.users ?? [];
+
+  const normalizeDate = (dt: any): string => {
+    if (dt == null) return "";
+    // If backend already sends ISO string -> keep it
+    if (typeof dt === "string") return dt;
+    // If it's a number (epoch)
+    if (typeof dt === "number") return new Date(dt).toISOString();
+    // Try Date conversion (handles objects that JSON.stringify to date-like)
+    try {
+      const d = new Date(dt);
+      if (!isNaN(d.getTime())) return d.toISOString();
+    } catch {
+      // fallthrough
+    }
+    // As a last resort, stringify
+    return String(dt);
+  };
+
+  const users = (usedUser ?? []).map((u: any) => ({
+    id: u?.userId ?? u?.id ?? undefined,
+    uuid: u?.uuid ?? u?.userUuid ?? undefined,
+    fullName: u?.fullName ?? u?.name ?? undefined,
+    // normalize phone/email -> frontend field names (and keep original names too for compatibility)
+    mobileNumber: u?.phoneNumber ?? u?.mobileNumber ?? u?.mobile ?? undefined,
+    phoneNumber: u?.phoneNumber ?? u?.mobileNumber ?? undefined,
+    email: u?.emailId ?? u?.email ?? undefined,
+    // map backend couponPurchaseDateTime -> usedAt, converting each entry to string
+    usedAt: (u?.couponPurchaseDateTime ?? u?.usedAt ?? []).map((dt: any) => normalizeDate(dt)),
+  }));
+
+  return {
+    offerId: raw?.offerId ?? 0,
+    storeId: raw?.storeId ?? 0,
+    couponId: raw?.couponId ?? 0,
+    couponCode: raw?.offerCode ?? raw?.couponCode ?? "",
+    users,
+  };
+},
+
 
   deleteOffer: async (offerId: number): Promise<void> => {
     await apiCall<any>("POST", `/offers/${encodeURIComponent(String(offerId))}`);
@@ -228,5 +297,17 @@ getReports: async (
 
     const endpoint = `/vendor/report${params.toString() ? `?${params.toString()}` : ""}`;
     return apiCall<PageResponse<StoreReportItemDTO>>("GET", endpoint);
+  },
+
+  //Substitution
+  substituteItems: async (request: SubstitutionRequest) => {
+    return apiCall<void>("POST", "/orders/substitute", request);
+  },
+  getStoreInventory: async (storeUuid: string, page = 0, size = 50) => {
+    const qs = `?page=${encodeURIComponent(page)}&size=${encodeURIComponent(size)}`;
+    return apiCall<PageResponse<GroupedStoreInventoryResponseDTO>>(
+      "GET",
+      `/stores-inventory/${storeUuid}/products${qs}`
+    );
   },
 };
