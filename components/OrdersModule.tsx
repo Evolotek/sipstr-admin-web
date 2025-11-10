@@ -140,7 +140,7 @@ const OrderPreviewList: React.FC<OrderPreviewListProps> = ({ orders, loading, on
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order ID</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Address</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Store Total</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order Total</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ETA</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
               <th className="px-6 py-3"></th>
@@ -152,7 +152,7 @@ const OrderPreviewList: React.FC<OrderPreviewListProps> = ({ orders, loading, on
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{o.orderShortId}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{o.customerName}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 max-w-xs truncate">{o.address ?? "—"}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 font-semibold">${(o.storeTotal ?? 0).toFixed(2)}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 font-semibold">${(o.originalTotal ?? 0).toFixed(2)}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{o.deliveryTime ? new Date(o.deliveryTime).toLocaleString() : (o.updatedAt ? new Date(o.updatedAt).toLocaleString() : '—')}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm">
                   <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${String(o.orderStatus ?? "").toUpperCase().includes('REFUND') ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}>
@@ -273,11 +273,11 @@ const PartialRefundDetail = ({ order, onBack, onProcessRefund }: {
           <h4 className="text-lg font-semibold mt-6 mb-3">Select Fees to Refund</h4>
           <div className="space-y-2">
             <div className="flex items-center justify-between p-2 border rounded-lg">
-              <label className="text-sm font-medium">Delivery Fee (${fmt(order.totalDeliveryFee)})</label>
+              <label className="text-sm font-medium">Delivery Fee</label>
               <input type="checkbox" checked={refundDeliveryFee} onChange={() => setRefundDeliveryFee(p => !p)} className="w-4 h-4 text-yellow-600 border-gray-300 rounded" />
             </div>
             <div className="flex items-center justify-between p-2 border rounded-lg">
-              <label className="text-sm font-medium">Tip (${fmt(order.tip)})</label>
+              <label className="text-sm font-medium">Tip</label>
               <input type="checkbox" checked={refundTip} onChange={() => setRefundTip(p => !p)} className="w-4 h-4 text-yellow-600 border-gray-300 rounded" />
             </div>
           </div>
@@ -379,7 +379,7 @@ export function OrdersModule() {
 const fetchRecentOrders = useCallback(async (type: RefundType, limit = 45) => {
   setLoading(true); setAlert(null); setPendingRefundType(type); setView('list');
   try {
-    const previews = await apiService.getRecentOrders(limit); // <- call new endpoint
+  const previews = await apiService.getRecentOrders(limit, selectedStore?.uuid);
     setOrders(previews ?? []);
   } catch (err) {
     setAlert({ message: `Failed to load recent orders: ${(err as any).responseBody?.message || (err as Error).message}`, type: 'error' });

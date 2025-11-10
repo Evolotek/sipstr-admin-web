@@ -375,6 +375,14 @@ export interface StoreInventoryVariantDTO {
   thumbnailImageUrl?: string;
 }
 
+export interface SelectedInventoryPick {
+        storeInventoryId: number;
+        variant: StoreInventoryVariantDTO; // Using your type for variant data
+        productName: string;
+        qty: number;
+        storeUuid?: string;
+    }
+
 export interface GroupedStoreInventoryResponseDTO {
   productName: string;
   productId: number;

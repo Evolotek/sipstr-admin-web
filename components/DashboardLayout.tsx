@@ -14,7 +14,7 @@ import{ RolesModule }from "./RolesModule"
 import{ TopPicksModule }from "./TopPicksModule"
 import{ ReportsModule }from "./ReportsModule"
 import DeliveryZonesPage from "./Delivery"
-// import { SubstituteModule } from "./SubstituteModule"
+import { SubstituteModule } from "./SubstituteModule"
 
 interface DashboardLayoutProps {
   session: AdminSession
@@ -43,9 +43,9 @@ export function DashboardLayout({ session, onLogout }: DashboardLayoutProps) {
     switch (activeModule) {
       case "users":
         return <UsersModule />
-      // case "substitute":
-      //   return <SubstituteModule />
-        case "orders":
+      case "substitute":
+        return <SubstituteModule />
+      case "orders":
         return <OrdersModule />
       case "zones":
         return <DeliveryZonesPage />

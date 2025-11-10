@@ -5,19 +5,79 @@ import { deliveryZoneService } from "../services/deliveryZone";
 import { apiService } from "../services/apiService"; // <-- new: used to fetch stores
 import { DeliveryZone, CreateDeliveryZoneRequest } from "../services/types";
 
-/**
- * Helper: parse KML string -> array of parsed placemarks
- * (unchanged from previous)
- */
 function parseKmlToPlacemarks(kmlText: string) {
   const parser = new DOMParser();
   const doc = parser.parseFromString(kmlText, "application/xml");
-  const placemarks = Array.from(doc.getElementsByTagName("Placemark"));
 
-  const parsed = placemarks.map((pm) => {
+  let placemarkNodes: Element[] = [];
+  try {
+    placemarkNodes = Array.from(doc.getElementsByTagNameNS?.("*", "Placemark") || []);
+  } catch (e) {
+    placemarkNodes = [];
+  }
+  if (placemarkNodes.length === 0) {
+    placemarkNodes = Array.from(doc.getElementsByTagName("Placemark") || []);
+  }
+
+  const canonicalKey = (rawKey: string) => {
+    const k = rawKey.trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const map: Record<string, string> = {
+      zonename: "zoneName",
+      "zone": "zoneName",
+      name: "zoneName",
+
+      basefee: "baseDeliveryFee",
+      "base delivery fee": "baseDeliveryFee",
+      basedeliveryfee: "baseDeliveryFee",
+
+      permilefee: "perMileFee",
+      "per mile fee": "perMileFee",
+      permile: "perMileFee",
+
+      minorder: "minOrderAmount",
+      "min order": "minOrderAmount",
+      minorderamount: "minOrderAmount",
+
+      estpreptime: "estimatedPreparationTime",
+      estprep: "estimatedPreparationTime",
+      "est prep": "estimatedPreparationTime",
+      "estimated preparation time": "estimatedPreparationTime",
+
+      restricted: "isRestricted",
+      isrestricted: "isRestricted",
+      allow: "isRestricted",
+    };
+    return map[k] ?? rawKey;
+  };
+
+  const parseValue = (val: string) => {
+    const v = String(val).trim();
+    if (!v) return v;
+
+    const low = v.toLowerCase();
+    if (low === "yes" || low === "true") return true;
+    if (low === "no" || low === "false") return false;
+
+    const withoutUnits = v.replace(/\b(mins?|minutes?)\b/gi, "").trim();
+
+    const numCandidate = withoutUnits.match(/-?\d+(\.\d+)?/);
+    if (numCandidate) {
+      const n = Number(numCandidate[0]);
+      if (!Number.isNaN(n)) return n;
+    }
+
+    return v;
+  };
+
+  const parsed = placemarkNodes.map((pm) => {
     const nameEl = pm.getElementsByTagName("name")[0];
     const descEl = pm.getElementsByTagName("description")[0];
-    const coordsEl = pm.getElementsByTagName("coordinates")[0];
+
+    let coordsEl = pm.getElementsByTagName("coordinates")[0];
+    if (!coordsEl) {
+      const allCoords = Array.from(pm.getElementsByTagNameNS?.("*", "coordinates") || []);
+      if (allCoords.length > 0) coordsEl = allCoords[0];
+    }
 
     const name = nameEl ? nameEl.textContent?.trim() ?? "" : "";
     const rawDescription = descEl ? descEl.textContent ?? "" : "";
@@ -31,31 +91,39 @@ function parseKmlToPlacemarks(kmlText: string) {
         const lon = parseFloat(parts[0]);
         const lat = parseFloat(parts[1]);
         return [lat, lon];
-      });
+      }).filter((c) => Number.isFinite(c[0]) && Number.isFinite(c[1]));
     }
 
-    // parse description: try JSON first, else parse key:value lines or <br>-separated text
     let descData: Record<string, any> = {};
-    const cleaned = rawDescription.trim();
-    const withNewlines = cleaned.replace(/<br\s*\/?>/gi, "\n").trim();
+    const cleaned = (rawDescription || "").trim();
+    const withNewlines = cleaned.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "\n").trim();
 
     try {
-      const maybeJson = cleaned.startsWith("{") ? JSON.parse(cleaned) : null;
-      if (maybeJson && typeof maybeJson === "object") {
-        descData = maybeJson;
+      if (cleaned.startsWith("{")) {
+        const maybeJson = JSON.parse(cleaned);
+        if (maybeJson && typeof maybeJson === "object") {
+          descData = maybeJson;
+        }
       } else {
         const lines = withNewlines.split("\n").map((l) => l.trim()).filter(Boolean);
         for (const line of lines) {
           const sepIndex = line.indexOf(":");
           if (sepIndex > -1) {
-            const key = line.slice(0, sepIndex).trim();
-            const value = line.slice(sepIndex + 1).trim();
-            if (/^(true|false)$/i.test(value)) descData[key] = value.toLowerCase() === "true";
-            else if (!isNaN(Number(value))) descData[key] = Number(value);
-            else descData[key] = value;
+            const keyRaw = line.slice(0, sepIndex).trim();
+            const valueRaw = line.slice(sepIndex + 1).trim();
+            const key = canonicalKey(keyRaw);
+            descData[key] = parseValue(valueRaw);
           } else {
-            if (!descData.notes) descData.notes = [];
-            descData.notes.push(line);
+            const dashIndex = line.indexOf(" - ");
+            if (dashIndex > -1) {
+              const keyRaw = line.slice(0, dashIndex).trim();
+              const valueRaw = line.slice(dashIndex + 3).trim();
+              const key = canonicalKey(keyRaw);
+              descData[key] = parseValue(valueRaw);
+            } else {
+              if (!descData.notes) descData.notes = [];
+              descData.notes.push(line);
+            }
           }
         }
       }
@@ -64,11 +132,10 @@ function parseKmlToPlacemarks(kmlText: string) {
       for (const line of lines) {
         const sepIndex = line.indexOf(":");
         if (sepIndex > -1) {
-          const key = line.slice(0, sepIndex).trim();
-          const value = line.slice(sepIndex + 1).trim();
-          if (/^(true|false)$/i.test(value)) descData[key] = value.toLowerCase() === "true";
-          else if (!isNaN(Number(value))) descData[key] = Number(value);
-          else descData[key] = value;
+          const keyRaw = line.slice(0, sepIndex).trim();
+          const valueRaw = line.slice(sepIndex + 1).trim();
+          const key = canonicalKey(keyRaw);
+          descData[key] = parseValue(valueRaw);
         } else {
           if (!descData.notes) descData.notes = [];
           descData.notes.push(line);
@@ -80,12 +147,13 @@ function parseKmlToPlacemarks(kmlText: string) {
       name,
       rawDescription,
       parsedDescription: descData,
-      coordinates, // [ [lat, lon], ... ]
+      coordinates,
     };
   });
 
   return parsed;
 }
+
 
 export default function DeliveryZonesPage() {
   // storeName (user-friendly) + resolved selected store
