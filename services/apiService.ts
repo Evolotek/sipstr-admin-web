@@ -295,6 +295,9 @@ getConsumptionHistory: async (offerId: number): Promise<OfferDetailResponse> => 
   getAllOffers: async (storeId: number) => {
     return apiCall<any[]>("GET", `/offers?storeId=${encodeURIComponent(String(storeId))}`);
   },
+  getAllGlobalOffers: async () => {
+    return apiCall<any[]>("GET", `/offers/global`);
+  },
   getOfferDetailView: async (offerId: number): Promise<any> => {
   return apiCall<any>("GET", `/offer-details?offerId=${encodeURIComponent(String(offerId))}`);
 },

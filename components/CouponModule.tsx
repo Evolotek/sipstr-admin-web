@@ -86,6 +86,36 @@ export function CouponsModule() {
   }, []);
 
   /* ---------- load offers & normalize ---------- */
+
+  async function loadGlobalOffers() {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await apiService.getAllGlobalOffers(); // <-- assumes this exists
+      const normalized = (Array.isArray(data) ? data : []).map((o: any) => ({
+        offerId: o.offerId,
+        storeId: o.storeId,
+        name: o.offerName ?? o.name ?? "",
+        method: o.method,
+        type: o.type,
+        startDateTime: o.startDateTime,
+        endDateTime: o.endDateTime,
+        isActive: o.isActive,
+        status: o.status,
+        discount: o.discount ?? null,
+        couponCode: o.offerCode ?? (o.coupons?.couponCode ?? null),
+        couponId: o.couponId ?? (o.coupons?.couponId ?? null),
+        raw: o,
+      }));
+      setOffers(normalized);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load global offers");
+      setOffers([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function loadOffersForStore(sid?: string) {
     setLoading(true);
     setError(null);
@@ -121,6 +151,7 @@ export function CouponsModule() {
       setOffers(normalized);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load offers");
+      setOffers([]);
     } finally {
       setLoading(false);
     }
@@ -269,8 +300,16 @@ export function CouponsModule() {
       } else {
         await apiService.createOffer(payload);
       }
-      // If it was a store-scoped search, refresh using the current storeId; otherwise reload nothing
-      if (!isGlobalOffer) await loadOffersForStore(String(payload.storeId ?? storeId));
+
+      // REFRESH LOGIC: after save, reload the proper list
+      if (isGlobalOffer) {
+        await loadGlobalOffers();
+      } else {
+        // prefer the payload.storeId (if provided) else the manual storeId state
+        const reloadStoreId = payload.storeId ?? (storeId ? Number(storeId) : undefined);
+        if (reloadStoreId) await loadOffersForStore(String(reloadStoreId));
+      }
+
       setShowForm(false);
       setIsEditing(false);
       setIsGlobalOffer(false);
@@ -285,6 +324,8 @@ export function CouponsModule() {
     if (!confirm("Are you sure you want to delete this offer? This will mark it expired.")) return;
     try {
       await apiService.deleteOffer(offerId);
+      // refresh after delete
+      if (isGlobalOffer) await loadGlobalOffers(); else if (storeId) await loadOffersForStore(storeId);
       setOffers((prev) => prev.filter((x) => x.offerId !== offerId));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete offer");
@@ -304,6 +345,9 @@ export function CouponsModule() {
 
       // Call backend
       await apiService.toggleOfferStatus(offerId);
+
+      // refresh after toggle to ensure consistent status
+      if (isGlobalOffer) await loadGlobalOffers(); else if (storeId) await loadOffersForStore(storeId);
     } catch (err) {
       // Revert if backend fails
       setOffers((prev) =>
@@ -392,6 +436,9 @@ async function openConsumptionModal(offerId: number) {
         {/* NEW button for Sipstr Offer (global) */}
         <button onClick={openSipstrCreate} style={{ ...primaryBtnStyle, backgroundColor: "#6c63ff" }}>
           Sipstr Offer
+        </button>
+        <button onClick={() => loadGlobalOffers()} style={{ ...primaryBtnStyle, backgroundColor: "#4b5563" }}>
+          Load Global Offers
         </button>
       </div>
 

@@ -207,43 +207,94 @@ const FullRefundDetail = ({ order, onBack, onProcessRefund }: {
 };
 
 /* -------------------- PartialRefundDetail -------------------- */
-type RefundItem = { id: number; name: string; price?: number; finalPrice?: number };
+/* -------------------- PartialRefundDetail (backend-compatible) -------------------- */
+type RefundItem = { id: number; name: string; price?: number; finalPrice?: number; storeUuid?: string; storeName?: string };
 
 const PartialRefundDetail = ({ order, onBack, onProcessRefund }: {
-  order: Order; onBack: () => void; onProcessRefund: (orderId: string, itemIds: number[], deliveryFee: boolean, tip: boolean) => Promise<void>;
+  order: Order;
+  onBack: () => void;
+  onProcessRefund: (orderId: string, itemIds: number[], deliveryfee: boolean, tip: boolean) => Promise<void>;
 }) => {
+  // flat items with store info
   const allItems: RefundItem[] = useMemo(() =>
-    (order.stores ?? []).flatMap(store => (store.items ?? []).map(i => ({ id: i.itemId, name: i.itemName, price: i.price, finalPrice: i.finalPrice })))
-  , [order]);
+    (order.stores ?? []).flatMap(store =>
+      (store.items ?? []).map(i => ({
+        id: i.itemId,
+        name: i.itemName,
+        price: i.price,
+        finalPrice: i.finalPrice,
+        storeUuid: store.storeUuid,
+        storeName: store.storeName
+      }))
+    ), [order]);
+
+  // map of storeUuid -> store meta (including storeDeliveryFee)
+  const storesMeta = useMemo(() => (order.stores ?? []).map(s => ({
+    storeUuid: s.storeUuid,
+    storeName: s.storeName,
+    // adjust field name if your backend uses something else; common name used earlier: storeDeliveryFee
+    storeDeliveryFee: (s as any).storeDeliveryFee ?? (s as any).storeDelivery ?? 0
+  })), [order]);
 
   const [selectedItemIds, setSelectedItemIds] = useState<number[]>([]);
-  const [refundDeliveryFee, setRefundDeliveryFee] = useState(false);
+  const [refundDeliveryFee, setRefundDeliveryFee] = useState(false); // global checkbox (backend expects single boolean)
   const [refundTip, setRefundTip] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
-  const toggleItem = (id: number) => setSelectedItemIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  const toggleItem = (id: number) => setSelectedItemIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
-  const totalItemRefund = useMemo(() => allItems.filter(item => selectedItemIds.includes(item.id)).reduce((sum, item) => sum + (item.finalPrice ?? 0), 0), [selectedItemIds, allItems]);
+  // helper: items grouped by storeUuid
+  const itemsByStore = useMemo(() => {
+    const map: Record<string, RefundItem[]> = {};
+    (order.stores ?? []).forEach(s => { map[s.storeUuid] = []; });
+    allItems.forEach(it => {
+      const k = it.storeUuid ?? 'unknown';
+      if (!map[k]) map[k] = [];
+      map[k].push(it);
+    });
+    return map;
+  }, [allItems, order.stores]);
+
+  // total for selected items
+  const totalItemRefund = useMemo(() =>
+    allItems.filter(it => selectedItemIds.includes(it.id)).reduce((sum, it) => sum + (it.finalPrice ?? 0), 0)
+  , [allItems, selectedItemIds]);
+
+  // total delivery refund: only sum delivery fees for stores that have at least one selected item AND refundDeliveryFee is checked
+  const totalDeliveryRefund = useMemo(() => {
+    if (!refundDeliveryFee) return 0;
+    return storesMeta.reduce((sum, s) => {
+      const hasSelectedFromStore = (itemsByStore[s.storeUuid] || []).some(it => selectedItemIds.includes(it.id));
+      return sum + (hasSelectedFromStore ? (s.storeDeliveryFee ?? 0) : 0);
+    }, 0);
+  }, [refundDeliveryFee, storesMeta, itemsByStore, selectedItemIds]);
 
   const totalRefundAmount = useMemo(() => {
-  let total = totalItemRefund ?? 0; // subtotal + tax + bottle deposit already included in totalItemRefund
-
-  if (refundDeliveryFee) total += (order.totalDeliveryFee ?? 0);
-  if (refundTip) total += (order.tip ?? 0);
-
-  // Add checkout bag fee if backend includes it in refunds
-  if (order.totalCheckoutBagFee) total += order.totalCheckoutBagFee;
-
-  return total;
-}, [totalItemRefund, refundDeliveryFee, refundTip, order.totalDeliveryFee, order.tip, order.totalCheckoutBagFee]);
-
+    let total = 0;
+    total += totalItemRefund;
+    total += totalDeliveryRefund;
+    if (refundTip) total += (order.tip ?? 0);
+    if (order.totalCheckoutBagFee) total += order.totalCheckoutBagFee;
+    return total;
+  }, [totalItemRefund, totalDeliveryRefund, refundTip, order.tip, order.totalCheckoutBagFee]);
 
   const handleProcessPartialRefund = async () => {
-    if (totalRefundAmount === 0) { alert("Select items, delivery fee, or tip to refund."); return; }
+    if (totalRefundAmount === 0) {
+      alert("Select items, or enable refund of delivery fee / tip.");
+      return;
+    }
     setShowConfirm(false);
     setLoading(true);
-    try { await onProcessRefund(order.orderShortId ?? order.orderUuid, selectedItemIds, refundDeliveryFee, refundTip); } finally { setLoading(false); }
+    try {
+      // NOTE: keep API signature same as your backend: pass global refundDeliveryFee boolean
+      await onProcessRefund(order.orderShortId ?? order.orderUuid, selectedItemIds, refundDeliveryFee, refundTip);
+    } catch (err) {
+      // pass error through (parent handles alerting in your original code)
+      throw err;
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -257,25 +308,42 @@ const PartialRefundDetail = ({ order, onBack, onProcessRefund }: {
 
       <div className="mt-8 border-t pt-6 grid grid-cols-1 md:grid-cols-2 gap-8">
         <div>
-          <h4 className="text-lg font-semibold mb-3">Select Items to Refund</h4>
-          <div className="max-h-64 overflow-y-auto border p-3 rounded-lg bg-gray-50">
-            {allItems.length > 0 ? allItems.map(item => (
-              <div key={item.id} className="flex items-center justify-between gap-2 py-1 border-b last:border-b-0">
-                <label className="text-sm cursor-pointer flex-grow">{item.name}</label>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-gray-500">${fmt(item.finalPrice)}</span>
-                  <input type="checkbox" checked={selectedItemIds.includes(item.id)} onChange={() => toggleItem(item.id)} className="w-4 h-4 text-yellow-600 border-gray-300 rounded" />
+          <h4 className="text-lg font-semibold mb-3">Select Items to Refund (grouped by store)</h4>
+
+          <div className="space-y-4">
+            {(order.stores ?? []).map(s => (
+              <div key={s.storeUuid} className="border rounded-lg p-3 bg-gray-50">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <div className="font-medium">{s.storeName}</div>
+                    {s.storeAddress && <div className="text-xs text-gray-500">{s.storeAddress}</div>}
+                  </div>
+
+                  <div className="text-sm">Delivery fee: <span className="font-semibold">${fmt((s as any).storeDeliveryFee ?? (s as any).storeDelivery ?? 0)}</span></div>
+                </div>
+
+                <div className="max-h-48 overflow-y-auto border-t pt-2">
+                  {(itemsByStore[s.storeUuid] || []).length > 0 ? (itemsByStore[s.storeUuid] || []).map(item => (
+                    <div key={item.id} className="flex items-center justify-between gap-2 py-2 border-b last:border-b-0">
+                      <label className="text-sm cursor-pointer flex-grow">{item.name}</label>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs text-gray-500">${fmt(item.finalPrice)}</span>
+                        <input type="checkbox" checked={selectedItemIds.includes(item.id)} onChange={() => toggleItem(item.id)} className="w-4 h-4 text-yellow-600 border-gray-300 rounded" />
+                      </div>
+                    </div>
+                  )) : <p className="text-sm text-gray-500">No refundable items for this store.</p>}
                 </div>
               </div>
-            )) : <p className="text-sm text-gray-500">No refundable items in this order.</p>}
+            ))}
           </div>
 
           <h4 className="text-lg font-semibold mt-6 mb-3">Select Fees to Refund</h4>
           <div className="space-y-2">
             <div className="flex items-center justify-between p-2 border rounded-lg">
-              <label className="text-sm font-medium">Delivery Fee</label>
+              <label className="text-sm font-medium">Refund Delivery Fee (applies only to stores with selected items)</label>
               <input type="checkbox" checked={refundDeliveryFee} onChange={() => setRefundDeliveryFee(p => !p)} className="w-4 h-4 text-yellow-600 border-gray-300 rounded" />
             </div>
+
             <div className="flex items-center justify-between p-2 border rounded-lg">
               <label className="text-sm font-medium">Tip</label>
               <input type="checkbox" checked={refundTip} onChange={() => setRefundTip(p => !p)} className="w-4 h-4 text-yellow-600 border-gray-300 rounded" />
@@ -289,26 +357,44 @@ const PartialRefundDetail = ({ order, onBack, onProcessRefund }: {
             <div className="flex justify-between"><span>Original Total:</span><span className="font-semibold">${fmt(order.originalTotal)}</span></div>
             <div className="flex justify-between"><span>Refunded Previously:</span><span className="font-semibold text-red-600">-${fmt(order.refundAmount)}</span></div>
             <hr className="my-2"/>
+
             <div className="flex justify-between text-base font-semibold"><span>Items Selected:</span><span className="text-yellow-700">${fmt(totalItemRefund)}</span></div>
-            <div className="flex justify-between"><span>Delivery Fee Refund:</span><span className="text-yellow-700">${refundDeliveryFee ? fmt(order.totalDeliveryFee) : "0.00"}</span></div>
-            <div className="flex justify-between"><span>Tip Refund:</span><span className="text-yellow-700">${refundTip ? fmt(order.tip) : "0.00"}</span></div>
+
+            {/* Show per-store delivery rows only for stores that have selected items */}
+            {storesMeta.map(s => {
+              const hasSelectedFromStore = (itemsByStore[s.storeUuid] || []).some(it => selectedItemIds.includes(it.id));
+              const fee = s.storeDeliveryFee ?? 0;
+              const shown = hasSelectedFromStore;
+              return shown ? (
+                <div key={s.storeUuid} className="flex justify-between text-sm">
+                  <span>Delivery ({s.storeName}):</span>
+                  <span className="text-yellow-700">{refundDeliveryFee ? `$${fmt(fee)}` : "$0.00"}</span>
+                </div>
+              ) : null;
+            })}
+
+            <div className="flex justify-between"><span>Tip Refund:</span><span className="text-yellow-700">{refundTip ? `$${fmt(order.tip ?? 0)}` : "$0.00"}</span></div>
+
+            <div className="flex justify-between"><span>Checkout Bag Fee:</span><span className="text-yellow-700">${fmt(order.totalCheckoutBagFee ?? 0)}</span></div>
+            
+            <div className="flex justify-between text-sm"><span>Tax:</span><span className="text-gray-500 italic">As applicable</span></div>
             <hr className="my-3 border-yellow-300"/>
             <div className="flex justify-between text-xl font-extrabold text-red-600"><span>Total New Refund:</span><span>-${fmt(totalRefundAmount)}</span></div>
-            <div className="flex justify-between text-sm mt-3"><span>Remaining Total:</span><span className="font-bold text-green-600">${fmt(order.originalTotal - (order.refundAmount ?? 0) - totalRefundAmount)}</span></div>
           </div>
         </div>
       </div>
 
       <div className="mt-8 pt-4 border-t flex justify-end">
-        <button onClick={() => setShowConfirm(true)} disabled={loading || totalRefundAmount === 0} className="px-6 py-3 bg-yellow-600 text-white font-semibold rounded-lg shadow-md hover:bg-yellow-700 disabled:opacity-50 transition">
-          {loading ? "Processing..." : `Process Partial Refund ($${fmt(totalRefundAmount)})`}
+        <button onClick={() => setShowConfirm(true)} disabled={loading || totalRefundAmount === 0} className="px-6 py-3 bg-yellow-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700 disabled:opacity-50 transition">
+          {loading ? "Processing..." : "Process Partial Refund"}
         </button>
       </div>
 
-      <ConfirmModal open={showConfirm} title="Confirm Partial Refund" message={`Are you sure you want to process a PARTIAL refund of $${fmt(totalRefundAmount)} for order ${order.orderShortId ?? order.orderUuid.slice(0,8)}?`} onCancel={() => setShowConfirm(false)} onConfirm={handleProcessPartialRefund} />
+      <ConfirmModal open={showConfirm} title="Confirm Partial Refund" message={`Are you sure you want to process a PARTIAL refund for order ${order.orderShortId ?? order.orderUuid}?`} onCancel={() => setShowConfirm(false)} onConfirm={handleProcessPartialRefund} />
     </div>
   );
 };
+
 
 /* -------------------- OrdersModule -------------------- */
 function useDebounce<T>(value: T, delay = 300) {
@@ -481,7 +567,7 @@ const fetchRecentOrders = useCallback(async (type: RefundType, limit = 45) => {
 </button>
           </div>
 
-          <p className="text-sm text-gray-500 mt-3">Tip: start typing a store name and select it from the suggestions. The recent orders query will be filtered by that store.</p>
+          <p className="text-sm text-gray-500 mt-3">Tip: Type a store name and select it from the suggestions</p>
 
           {alert && <div className="mt-6"><div className={`border p-3 rounded ${alert.type === 'success' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>{alert.message}</div></div>}
         </div>

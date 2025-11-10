@@ -143,7 +143,7 @@ function DashboardHome() {
         gap: "20px",
       }}
     >
-      {[
+      {/* {[
         { title: "Total Users", value: "1,234", color: "#FF6600" },
         { title: "Total Orders", value: "5,678", color: "#FF6600" },
         { title: "Total Products", value: "342", color: "#FF6600" },
@@ -162,7 +162,7 @@ function DashboardHome() {
           <p style={{ margin: "0 0 12px 0", fontSize: "14px", color: "#666" }}>{stat.title}</p>
           <p style={{ margin: 0, fontSize: "32px", fontWeight: "bold", color: "#333" }}>{stat.value}</p>
         </div>
-      ))}
+      ))} */}
     </div>
   )
 }
