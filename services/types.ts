@@ -237,6 +237,25 @@ export interface Order {
   stores: StoreItemDTO[] // Details from OrderStore/OrderStoreItem
   items?: OrderItem[] // Flat list of all items (derived for the Partial Refund UI)
 }
+
+export const ORDER_STATUSES = [
+  "CREATED",
+  "PAYMENT_PENDING",
+  "ACCEPTED_BY_STORE",
+  "PARTIALLY_ACCEPTED_BY_STORE",
+  "SCHEDULED",
+  "READY_TO_PICKUP",
+  "CANCELLED_BY_CUSTOMER",
+  "OUT_FOR_DELIVERY",
+  "PARTIAL_DELIVERED",
+  "CANCELLED_BY_STORE",
+  "PARTIALLY_CANCELLED",
+  "DAMAGED",
+  "DELIVERED",
+  "REFUNDED",
+  "PARTIALLY_REFUNDED",
+] as const;
+
 export interface PackageUnit {
   packageId: number;
   packageName: string;

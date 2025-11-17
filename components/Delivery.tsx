@@ -248,14 +248,13 @@ export default function DeliveryZonesPage() {
   // Fetch zones - same as before but uses selectedStoreUuid now
   const fetchZones = async () => {
     if (!selectedStoreUuid) {
-      setError("Please select a store (by name) before fetching zones");
+      setError("Please select a valid store to fetch zones");
       return;
     }
     setLoading(true);
     setError("");
     try {
       const data = await deliveryZoneService.getDeliveryZones(selectedStoreUuid);
-      console.log(data);
       setZones(data);
     } catch (err) {
       console.error(err);
@@ -364,13 +363,22 @@ export default function DeliveryZonesPage() {
     setForm({ ...form, coordinates: newCoords });
   };
 
-  // --- KML Upload handler ---
   const handleFileUpload = async (file: File | null) => {
     setParsingError(null);
     setParsedPlacemarks([]);
     if (!file) return;
-    const text = await file.text();
+    const name = file.name || "";
+    const extMatch = name.toLowerCase().match(/\.(kml|kmz)$/);
+    if (!extMatch) {
+      setParsingError("Please enter a valid .kml or .kmz file");
+      return;
+    }
+    if (name.toLowerCase().endsWith(".kmz")) {
+      setParsingError("KMZ files are not supported in this uploader yet. Please upload a .kml file.");
+      return;
+    }
     try {
+      const text = await file.text();
       const parsed = parseKmlToPlacemarks(text);
       if (parsed.length === 0) setParsingError("No placemarks found in KML");
       setParsedPlacemarks(parsed);
@@ -515,29 +523,6 @@ export default function DeliveryZonesPage() {
         </div>
 
         <div style={{ display: "flex", gap: "8px" }}>
-          <button
-            onClick={() => {
-              // immediate resolution attempt; notify user if not resolved
-              if (!storeName.trim()) {
-                alert("Please type store name to resolve.");
-                return;
-              }
-              const match = stores.find((s) => s.storeName.toLowerCase() === storeName.trim().toLowerCase());
-              if (match) {
-                setSelectedStoreUuid(match.uuid);
-                setShowSuggestions(false);
-                alert(`Resolved store "${match.storeName}"`);
-              } else {
-                setSelectedStoreUuid(null);
-                setShowSuggestions(false);
-                alert("Store not found. Please select from suggestions or add the store in backend.");
-              }
-            }}
-            style={{ ...styles.button }}
-          >
-            Resolve Store
-          </button>
-
           <button onClick={fetchZones} style={styles.button}>Fetch Zones</button>
 
           {/* Upload KML */}
@@ -569,11 +554,6 @@ export default function DeliveryZonesPage() {
           </label>
 
         </div>
-      </div>
-
-      {/* show selected resolved uuid for clarity */}
-      <div style={{ marginBottom: "12px", color: selectedStoreUuid ? "#2f855a" : "#c53030" }}>
-        {selectedStoreUuid ? `Selected Store UUID: ${selectedStoreUuid}` : "No store selected or resolved"}
       </div>
 
       {/* Add button */}

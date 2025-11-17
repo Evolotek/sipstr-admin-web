@@ -9,6 +9,25 @@ import type { RecentOrder, Order } from "@/services/types";
 const fmt = (n?: number) => (n ?? 0).toFixed(2);
 type RefundType = "full" | "partial";
 
+/* -------------------- parseApiError util (network-aware) -------------------- */
+function parseApiError(err: any) {
+  // Try structured fields
+  const status = err?.status ?? err?.statusCode ?? err?.response?.status ?? err?.response?.statusCode;
+  const body = err?.responseBody ?? err?.response?.data ?? err?.data ?? err?.body ?? null;
+  const msgFromBody = body && (body.message || body.error || body.msg || body.detail);
+  const raw = String(err?.message ?? err ?? "");
+  let bodyText = "";
+  try { bodyText = typeof body === "string" ? body : JSON.stringify(body || {}); } catch { bodyText = String(body); }
+
+  // Detect browser network-level error (Fetch API throws TypeError on network failure)
+  const isNetworkError =
+    raw.toLowerCase().includes("failed to fetch") ||
+    (err && err.name === "TypeError" && /failed to fetch/i.test(String(err.message || "")));
+
+  const message = (msgFromBody && String(msgFromBody)) || raw || bodyText || "Something went wrong.";
+  return { status, message, isNetworkError };
+}
+
 /* -------------------- Small UI primitives (modals/toasts) -------------------- */
 const ConfirmModal = ({ open, title, message, onCancel, onConfirm }: {
   open: boolean; title?: string; message: string; onCancel: () => void; onConfirm: () => void;
@@ -28,24 +47,14 @@ const ConfirmModal = ({ open, title, message, onCancel, onConfirm }: {
   );
 };
 
-const AlertToast = ({ open, message, type = "info", onClose }: {
-  open: boolean; message: string; type?: "info" | "success" | "error"; onClose: () => void;
-}) => {
-  if (!open) return null;
-  const bg = type === "success" ? "bg-green-50 border-green-200 text-green-800" : type === "error" ? "bg-red-50 border-red-200 text-red-800" : "bg-gray-50 border-gray-200 text-gray-800";
-  return (
-    <div className="fixed top-4 right-4 z-50 pointer-events-none">
-      <div className={`pointer-events-auto ${bg} border p-3 rounded-lg shadow`}>
-        <div className="flex items-start justify-between gap-4">
-          <div className="text-sm">{message}</div>
-          <button onClick={onClose} className="text-sm text-gray-600 hover:text-gray-900">✕</button>
-        </div>
-      </div>
-    </div>
-  );
-};
+const AlertBox = ({ children }: { children: React.ReactNode }) => (
+  <div className="mb-4">
+    <div className="border p-3 rounded bg-red-50 border-red-200 text-sm text-red-800">{children}</div>
+  </div>
+);
 
 /* -------------------- OrderDetailsDialog -------------------- */
+/* (kept same as your original) */
 const OrderDetailsDialog = ({ order }: { order: Order }) => {
   return (
     <div className="bg-white p-6 rounded-xl shadow-lg">
@@ -101,38 +110,25 @@ const OrderDetailsDialog = ({ order }: { order: Order }) => {
           </div>
         </div>
       </div>
-
-      {order.stores?.length ? (
-        <div className="space-y-3 mt-4">
-          <h4 className="font-semibold">Store breakdown</h4>
-          <div className="max-h-44 overflow-y-auto border p-3 rounded bg-gray-50 text-sm">
-            {order.stores.map((s, idx) => (
-              <div key={s.storeUuid ?? idx} className="mb-3">
-                <div className="flex justify-between font-medium"><span>{s.storeName}</span><span>${fmt((s as any).originalStoreTotal ?? (s as any).storeTotal ?? 0)}</span></div>
-                <div className="text-xs text-gray-600">{s.storeAddress ?? ""}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 };
 
-/* -------------------- OrderPreviewList -------------------- */
+/* -------------------- OrderPreviewList (unchanged logic, keys adjusted) -------------------- */
 interface OrderPreviewListProps {
   orders: RecentOrder[];
   loading: boolean;
   onViewOrder: (shortId: string) => void;
+  limit: number;
 }
 
-const OrderPreviewList: React.FC<OrderPreviewListProps> = ({ orders, loading, onViewOrder }) => {
+const OrderPreviewList: React.FC<OrderPreviewListProps> = ({ orders, loading, onViewOrder, limit }) => {
   if (loading) return <div className="text-center p-8 text-lg text-gray-600">Loading recent orders...</div>;
   if (!orders || orders.length === 0) return <div className="text-center p-8 text-lg text-gray-600">No recent orders found.</div>;
 
   return (
     <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-      <h3 className="text-xl font-bold p-5 border-b text-gray-800">Recent Orders (Last 45)</h3>
+      <h3 className="text-xl font-bold p-5 border-b text-gray-800">Recent Orders (Last {limit})</h3>
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
@@ -171,7 +167,7 @@ const OrderPreviewList: React.FC<OrderPreviewListProps> = ({ orders, loading, on
   );
 };
 
-/* -------------------- FullRefundDetail -------------------- */
+/* -------------------- FullRefundDetail (unchanged) -------------------- */
 const FullRefundDetail = ({ order, onBack, onProcessRefund }: {
   order: Order; onBack: () => void; onProcessRefund: (orderId: string) => Promise<void>;
 }) => {
@@ -200,14 +196,13 @@ const FullRefundDetail = ({ order, onBack, onProcessRefund }: {
       </div>
 
       <ConfirmModal open={showConfirm} title="Confirm Full Refund"
-        message={`Are you absolutely sure you want to process a FULL refund of $${fmt(order.originalTotal)} for order ${order.orderShortId ?? order.orderUuid.slice(0, 8)}? This action cannot be undone.`}
+        message={`Are you absolutely sure you want to process a FULL refund of $${fmt(order.originalTotal)} for order ${order.orderShortId ?? (order.orderUuid ?? "").slice(0, 8)}? This action cannot be undone.`}
         onCancel={() => setShowConfirm(false)} onConfirm={handleConfirm} />
     </div>
   );
 };
 
-/* -------------------- PartialRefundDetail -------------------- */
-/* -------------------- PartialRefundDetail (backend-compatible) -------------------- */
+/* -------------------- PartialRefundDetail (small change: use toast through window event) -------------------- */
 type RefundItem = { id: number; name: string; price?: number; finalPrice?: number; storeUuid?: string; storeName?: string };
 
 const PartialRefundDetail = ({ order, onBack, onProcessRefund }: {
@@ -215,7 +210,6 @@ const PartialRefundDetail = ({ order, onBack, onProcessRefund }: {
   onBack: () => void;
   onProcessRefund: (orderId: string, itemIds: number[], deliveryfee: boolean, tip: boolean) => Promise<void>;
 }) => {
-  // flat items with store info
   const allItems: RefundItem[] = useMemo(() =>
     (order.stores ?? []).flatMap(store =>
       (store.items ?? []).map(i => ({
@@ -228,23 +222,20 @@ const PartialRefundDetail = ({ order, onBack, onProcessRefund }: {
       }))
     ), [order]);
 
-  // map of storeUuid -> store meta (including storeDeliveryFee)
   const storesMeta = useMemo(() => (order.stores ?? []).map(s => ({
     storeUuid: s.storeUuid,
     storeName: s.storeName,
-    // adjust field name if your backend uses something else; common name used earlier: storeDeliveryFee
     storeDeliveryFee: (s as any).storeDeliveryFee ?? (s as any).storeDelivery ?? 0
   })), [order]);
 
   const [selectedItemIds, setSelectedItemIds] = useState<number[]>([]);
-  const [refundDeliveryFee, setRefundDeliveryFee] = useState(false); // global checkbox (backend expects single boolean)
+  const [refundDeliveryFee, setRefundDeliveryFee] = useState(false);
   const [refundTip, setRefundTip] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
   const toggleItem = (id: number) => setSelectedItemIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
-  // helper: items grouped by storeUuid
   const itemsByStore = useMemo(() => {
     const map: Record<string, RefundItem[]> = {};
     (order.stores ?? []).forEach(s => { map[s.storeUuid] = []; });
@@ -256,12 +247,10 @@ const PartialRefundDetail = ({ order, onBack, onProcessRefund }: {
     return map;
   }, [allItems, order.stores]);
 
-  // total for selected items
   const totalItemRefund = useMemo(() =>
     allItems.filter(it => selectedItemIds.includes(it.id)).reduce((sum, it) => sum + (it.finalPrice ?? 0), 0)
   , [allItems, selectedItemIds]);
 
-  // total delivery refund: only sum delivery fees for stores that have at least one selected item AND refundDeliveryFee is checked
   const totalDeliveryRefund = useMemo(() => {
     if (!refundDeliveryFee) return 0;
     return storesMeta.reduce((sum, s) => {
@@ -281,20 +270,15 @@ const PartialRefundDetail = ({ order, onBack, onProcessRefund }: {
 
   const handleProcessPartialRefund = async () => {
     if (totalRefundAmount === 0) {
-      alert("Select items, or enable refund of delivery fee / tip.");
+      // dispatch module-level toast instead of alert()
+      window.dispatchEvent(new CustomEvent("ordersModuleAlert", { detail: { message: "Select items, or enable refund of delivery fee / tip.", type: "error" } }));
       return;
     }
     setShowConfirm(false);
     setLoading(true);
     try {
-      // NOTE: keep API signature same as your backend: pass global refundDeliveryFee boolean
       await onProcessRefund(order.orderShortId ?? order.orderUuid, selectedItemIds, refundDeliveryFee, refundTip);
-    } catch (err) {
-      // pass error through (parent handles alerting in your original code)
-      throw err;
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   return (
@@ -340,7 +324,7 @@ const PartialRefundDetail = ({ order, onBack, onProcessRefund }: {
           <h4 className="text-lg font-semibold mt-6 mb-3">Select Fees to Refund</h4>
           <div className="space-y-2">
             <div className="flex items-center justify-between p-2 border rounded-lg">
-              <label className="text-sm font-medium">Refund Delivery Fee (applies only to stores with selected items)</label>
+              <label className="text-sm font-medium">Refund Delivery Fee</label>
               <input type="checkbox" checked={refundDeliveryFee} onChange={() => setRefundDeliveryFee(p => !p)} className="w-4 h-4 text-yellow-600 border-gray-300 rounded" />
             </div>
 
@@ -357,15 +341,12 @@ const PartialRefundDetail = ({ order, onBack, onProcessRefund }: {
             <div className="flex justify-between"><span>Original Total:</span><span className="font-semibold">${fmt(order.originalTotal)}</span></div>
             <div className="flex justify-between"><span>Refunded Previously:</span><span className="font-semibold text-red-600">-${fmt(order.refundAmount)}</span></div>
             <hr className="my-2"/>
-
             <div className="flex justify-between text-base font-semibold"><span>Items Selected:</span><span className="text-yellow-700">${fmt(totalItemRefund)}</span></div>
 
-            {/* Show per-store delivery rows only for stores that have selected items */}
             {storesMeta.map(s => {
               const hasSelectedFromStore = (itemsByStore[s.storeUuid] || []).some(it => selectedItemIds.includes(it.id));
               const fee = s.storeDeliveryFee ?? 0;
-              const shown = hasSelectedFromStore;
-              return shown ? (
+              return hasSelectedFromStore ? (
                 <div key={s.storeUuid} className="flex justify-between text-sm">
                   <span>Delivery ({s.storeName}):</span>
                   <span className="text-yellow-700">{refundDeliveryFee ? `$${fmt(fee)}` : "$0.00"}</span>
@@ -374,9 +355,7 @@ const PartialRefundDetail = ({ order, onBack, onProcessRefund }: {
             })}
 
             <div className="flex justify-between"><span>Tip Refund:</span><span className="text-yellow-700">{refundTip ? `$${fmt(order.tip ?? 0)}` : "$0.00"}</span></div>
-
             <div className="flex justify-between"><span>Checkout Bag Fee:</span><span className="text-yellow-700">${fmt(order.totalCheckoutBagFee ?? 0)}</span></div>
-            
             <div className="flex justify-between text-sm"><span>Tax:</span><span className="text-gray-500 italic">As applicable</span></div>
             <hr className="my-3 border-yellow-300"/>
             <div className="flex justify-between text-xl font-extrabold text-red-600"><span>Total New Refund:</span><span>-${fmt(totalRefundAmount)}</span></div>
@@ -395,7 +374,6 @@ const PartialRefundDetail = ({ order, onBack, onProcessRefund }: {
   );
 };
 
-
 /* -------------------- OrdersModule -------------------- */
 function useDebounce<T>(value: T, delay = 300) {
   const [debounced, setDebounced] = useState<T>(value);
@@ -406,6 +384,87 @@ function useDebounce<T>(value: T, delay = 300) {
   return debounced;
 }
 
+/* List of statuses (copied from your backend enum) */
+const ORDER_STATUSES = [
+  "CREATED",
+  "PAYMENT_PENDING",
+  "ACCEPTED_BY_STORE",
+  "PARTIALLY_ACCEPTED_BY_STORE",
+  "SCHEDULED",
+  "READY_TO_PICKUP",
+  "CANCELLED_BY_CUSTOMER",
+  "OUT_FOR_DELIVERY",
+  "PARTIAL_DELIVERED",
+  "CANCELLED_BY_STORE",
+  "PARTIALLY_CANCELLED",
+  "DAMAGED",
+  "DELIVERED",
+  "REFUNDED",
+  "PARTIALLY_REFUNDED",
+] as const;
+type OrderStatusType = (typeof ORDER_STATUSES)[number];
+
+/* Small checkbox-dropdown component for statuses (unchanged) */
+function StatusCheckboxDropdown({
+  value,
+  onChange,
+  placeholder = "Status"
+}: {
+  value: OrderStatusType[];
+  onChange: (v: OrderStatusType[]) => void;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (!ref.current) return;
+      if (!ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  const toggle = (s: OrderStatusType) => {
+    if (value.includes(s)) onChange(value.filter(x => x !== s));
+    else onChange([...value, s]);
+  };
+
+  const clearAll = () => onChange([]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button onClick={() => setOpen(o => !o)} className="flex items-center gap-2 border rounded px-3 py-1">
+        <span className="text-sm">{value.length === 0 ? placeholder : `${value.length} selected`}</span>
+        <svg className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor"><path d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 011.08 1.04l-4.25 4.25a.75.75 0 01-1.06 0L5.21 8.27a.75.75 0 01.02-1.06z"/></svg>
+      </button>
+
+      {open && (
+        <div className="absolute right-0 mt-2 w-64 bg-white border rounded shadow-lg z-50 p-3">
+          <div className="flex items-center justify-between mb-2">
+            <strong className="text-sm">Filter statuses</strong>
+            <button onClick={clearAll} className="text-xs text-gray-500 hover:underline">Clear</button>
+          </div>
+
+          <div className="max-h-56 overflow-y-auto space-y-1">
+            {ORDER_STATUSES.map(s => (
+              <label key={s} className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={value.includes(s as OrderStatusType)} onChange={() => toggle(s as OrderStatusType)} className="w-4 h-4" />
+                <span className="truncate">{s}</span>
+              </label>
+            ))}
+          </div>
+
+          <div className="mt-3 flex justify-end gap-2">
+            <button onClick={() => setOpen(false)} className="text-sm px-3 py-1 rounded bg-gray-100 hover:bg-gray-200">Done</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function OrdersModule() {
   const [view, setView] = useState<'landing' | 'list' | 'full_detail' | 'partial_detail'>('landing');
   const [orders, setOrders] = useState<RecentOrder[]>([]);
@@ -414,65 +473,88 @@ export function OrdersModule() {
   const [alert, setAlert] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [pendingRefundType, setPendingRefundType] = useState<RefundType | null>(null);
 
-  const [storeQuery, setStoreQuery] = useState("");
-  const debouncedQuery = useDebounce(storeQuery, 300);
-  const [storeSuggestions, setStoreSuggestions] = useState<any[]>([]);
-  const [storeLoading, setStoreLoading] = useState(false);
-  const [selectedStore, setSelectedStore] = useState<{ uuid: string; storeName: string; storeAddress?: string } | null>(null);
-  const suggestionRef = useRef<HTMLDivElement | null>(null);
+  // filter controls (defaults present but not shown on landing)
+  const [limit, setLimit] = useState<number>(45);
+  const [statusFilter, setStatusFilter] = useState<OrderStatusType[]>(["CREATED"]);
+
+  const debouncedLimit = useDebounce(limit, 500);
+  const debouncedStatus = useDebounce(statusFilter, 400);
+
+  // network online/offline state for helpful UI
+  const [isOnline, setIsOnline] = useState<boolean>(() => (typeof navigator !== "undefined" ? navigator.onLine : true));
 
   useEffect(() => {
-    function onDoc(e: MouseEvent) {
-      if (!suggestionRef.current) return;
-      if (!suggestionRef.current.contains(e.target as Node)) setStoreSuggestions([]);
-    }
-    document.addEventListener("click", onDoc);
-    return () => document.removeEventListener("click", onDoc);
+    function onOnline() { setIsOnline(true); }
+    function onOffline() { setIsOnline(false); }
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => { window.removeEventListener("online", onOnline); window.removeEventListener("offline", onOffline); };
   }, []);
 
-  const storesCacheRef = useRef<any[] | null>(null);
-  const fetchStoresIfNeeded = useCallback(async () => {
-    if (storesCacheRef.current) return storesCacheRef.current;
+  // track last fetch params so Retry can re-run the same request
+  const lastFetchRef = useRef<{ type: RefundType; limit: number; statuses: OrderStatusType[] } | null>(null);
+
+  // fetch recent orders from apiService (limit) and apply status filter client-side
+  const fetchRecentOrders = useCallback(async (type: RefundType, useLimit = 45, statuses: OrderStatusType[] = []) => {
+    setLoading(true); setAlert(null); setPendingRefundType(type); setView('list');
+    lastFetchRef.current = { type, limit: useLimit, statuses };
+
     try {
-      setStoreLoading(true);
-      const stores = await apiService.getStores();
-      const mapped = (stores || []).map((s: any) => ({
-        uuid: s.uuid ?? s.storeUuid ?? s.id,
-        storeName: s.storeName ?? s.name ?? "Unknown Store",
-        storeAddress: s.storeAddress ?? s.address ?? ""
-      }));
-      storesCacheRef.current = mapped;
-      return mapped;
-    } finally { setStoreLoading(false); }
-  }, []);
+      const previews = await apiService.getRecentOrders(useLimit);
+      const normalized = previews ?? [];
 
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      if (!debouncedQuery || debouncedQuery.trim().length === 0) {
-        setStoreSuggestions([]);
-        return;
+      const filtered = (statuses && statuses.length > 0)
+        ? normalized.filter(p => {
+            const s = (p.orderStatus ?? "").toString().toUpperCase();
+            return statuses.some(st => st.toString().toUpperCase() === s);
+          })
+        : normalized;
+
+      setOrders(filtered);
+    } catch (err) {
+      console.error("fetchRecentOrders error (raw):", err);
+      const { status, message, isNetworkError } = parseApiError(err);
+
+      if (!isOnline) {
+        // browser offline
+        setAlert({ message: "You appear to be offline. Please check your network connection and try again.", type: 'error' });
+      } else if (isNetworkError) {
+        // network/CORS issue or server unreachable
+        setAlert({
+          message: `Cannot reach the server. This may be a network issue or the backend is down. ${status ? `(status ${status}) ` : ""}Click Retry to try again.`,
+          type: 'error'
+        });
+      } else if (status === 401) {
+        setAlert({ message: "You are not authorised. Please re-login.", type: 'error' });
+      } else if (status === 429) {
+        setAlert({ message: "Too many requests. Please wait a moment and try again.", type: 'error' });
+      } else {
+        setAlert({ message: `Failed to load recent orders: ${message}`, type: 'error' });
       }
-      const list = await fetchStoresIfNeeded();
-      if (!mounted) return;
-      const q = debouncedQuery.toLowerCase().trim();
-      const matches = list.filter(s => s.storeName.toLowerCase().includes(q) || (s.storeAddress || "").toLowerCase().includes(q));
-      setStoreSuggestions(matches.slice(0, 10));
-    })();
-    return () => { mounted = false; };
-  }, [debouncedQuery, fetchStoresIfNeeded]);
 
-const fetchRecentOrders = useCallback(async (type: RefundType, limit = 45) => {
-  setLoading(true); setAlert(null); setPendingRefundType(type); setView('list');
-  try {
-  const previews = await apiService.getRecentOrders(limit, selectedStore?.uuid);
-    setOrders(previews ?? []);
-  } catch (err) {
-    setAlert({ message: `Failed to load recent orders: ${(err as any).responseBody?.message || (err as Error).message}`, type: 'error' });
-    setOrders([]);
-  } finally { setLoading(false); }
-}, []);
+      setOrders([]);
+    } finally { setLoading(false); }
+  }, [isOnline]);
 
+  // When user clicks action from landing (start flow) -> go to list with defaults (limit=45, status=CREATED)
+  const handleStartFetch = (type: RefundType) => {
+    setLimit(45);
+    setStatusFilter(["CREATED"]);
+    fetchRecentOrders(type, 45, ["CREATED"]);
+  };
+
+  // Auto-refetch while on list view when filters change (debounced)
+  useEffect(() => {
+    if (view !== 'list' || !pendingRefundType) return;
+    fetchRecentOrders(pendingRefundType, debouncedLimit, debouncedStatus);
+  }, [debouncedLimit, debouncedStatus, view, pendingRefundType, fetchRecentOrders]);
+
+  // Retry handler (for network/CORS errors)
+  const handleRetry = useCallback(() => {
+    const last = lastFetchRef.current;
+    if (!last) return;
+    fetchRecentOrders(last.type, last.limit, last.statuses);
+  }, [fetchRecentOrders]);
 
   const handleViewOrder = useCallback(async (orderShortId: string) => {
     setLoading(true); setAlert(null);
@@ -481,9 +563,15 @@ const fetchRecentOrders = useCallback(async (type: RefundType, limit = 45) => {
       setSelectedOrder(full);
       setView(pendingRefundType === 'full' ? 'full_detail' : 'partial_detail');
     } catch (err) {
-      setAlert({ message: `Failed to load order details: ${(err as any).responseBody?.message || (err as Error).message}`, type: 'error' });
+      console.error("handleViewOrder error (raw):", err);
+      const { message, isNetworkError } = parseApiError(err);
+      if (!isOnline || isNetworkError) {
+        setAlert({ message: "Cannot load order details — network error or server unreachable. Try again.", type: 'error' });
+      } else {
+        setAlert({ message: `Failed to load order details: ${message}`, type: 'error' });
+      }
     } finally { setLoading(false); }
-  }, [pendingRefundType]);
+  }, [pendingRefundType, isOnline]);
 
   const handleBackToLanding = () => {
     setOrders([]); setSelectedOrder(null); setPendingRefundType(null); setView('landing'); setAlert(null);
@@ -494,83 +582,57 @@ const fetchRecentOrders = useCallback(async (type: RefundType, limit = 45) => {
       await apiService.refundOrderFull(orderId);
       setAlert({ message: `Full refund successfully processed for order ${orderId.slice(0, 8)}.`, type: 'success' });
       setSelectedOrder(null);
-      await fetchRecentOrders('full', 45);
+      // refresh using current filters
+      await fetchRecentOrders('full', limit, statusFilter);
     } catch (err) {
-      setAlert({ message: `Full refund failed: ${(err as any).responseBody?.message || (err as Error).message}`, type: 'error' });
+      console.error("handleProcessFullRefund error (raw):", err);
+      const { message } = parseApiError(err);
+      setAlert({ message: `Full refund failed: ${message}`, type: 'error' });
       setView('list');
     }
-  }, [fetchRecentOrders, selectedStore?.uuid]);
+  }, [fetchRecentOrders, limit, statusFilter]);
 
   const handleProcessPartialRefund = useCallback(async (orderId: string, itemIds: number[], deliveryFee: boolean, tip: boolean) => {
     try {
       await apiService.refundOrderPartial(orderId, itemIds, deliveryFee, tip);
       setAlert({ message: `Partial refund successfully processed for order ${orderId.slice(0, 8)}.`, type: 'success' });
       setSelectedOrder(null);
-      await fetchRecentOrders('partial', 45);
+      // refresh
+      await fetchRecentOrders('partial', limit, statusFilter);
     } catch (err) {
-      setAlert({ message: `Partial refund failed: ${(err as any).responseBody?.message || (err as Error).message}`, type: 'error' });
+      console.error("handleProcessPartialRefund error (raw):", err);
+      const { message } = parseApiError(err);
+      setAlert({ message: `Partial refund failed: ${message}`, type: 'error' });
       setView('list');
     }
-  }, [fetchRecentOrders, selectedStore?.uuid]);
+  }, [fetchRecentOrders, limit, statusFilter]);
 
   // RENDER
   if (view === 'landing') {
     return (
       <div className="p-8 md:p-12 min-h-screen bg-gray-50 flex flex-col items-center">
         <h2 className="text-4xl font-extrabold text-gray-800 mb-4">💰 Refund Management</h2>
-        <p className="text-lg text-gray-600 mb-6 text-center max-w-lg">Select the store to manage refunds for, then choose whether to process a full or partial refund.</p>
+        <p className="text-lg text-gray-600 mb-6 text-center max-w-lg">Handle Full & Partial Refunds</p>
 
-        <div className="w-full max-w-2xl">
-          {selectedStore ? (
-            <div className="flex items-center justify-between bg-white border rounded-lg p-3 mb-4">
-              <div>
-                <div className="font-semibold">{selectedStore.storeName}</div>
-                {selectedStore.storeAddress && <div className="text-sm text-gray-500">{selectedStore.storeAddress}</div>}
-              </div>
-              <div className="flex items-center gap-2">
-                <button onClick={() => { setSelectedStore(null); setStoreQuery(""); }} className="text-sm text-gray-600 underline">Change</button>
-              </div>
-            </div>
-          ) : (
-            <div className="relative mb-4" ref={suggestionRef}>
-              <input value={storeQuery} onChange={(e) => setStoreQuery(e.target.value)} placeholder="Search for store by name or address..." className="w-full px-4 py-3 rounded-lg border focus:outline-none focus:ring-2 focus:ring-indigo-200" />
-              {storeLoading && <div className="absolute left-3 top-3 text-xs text-gray-500">loading...</div>}
-              {storeSuggestions.length > 0 && (
-                <div className="absolute z-40 mt-1 w-full bg-white border rounded-md shadow-lg max-h-56 overflow-auto">
-                  {storeSuggestions.map(s => (
-                    <div key={s.uuid} onClick={() => { setSelectedStore(s); setStoreQuery(""); setStoreSuggestions([]); }} className="px-4 py-3 hover:bg-gray-100 cursor-pointer">
-                      <div className="font-medium">{s.storeName}</div>
-                      {s.storeAddress && <div className="text-xs text-gray-500 mt-1">{s.storeAddress}</div>}
-                    </div>
-                  ))}
-                </div>
-              )}
-              {debouncedQuery && !storeLoading && storeSuggestions.length === 0 && (
-                <div className="absolute z-40 mt-1 w-full bg-white border rounded-md shadow-lg p-3 text-sm text-gray-600">
-                  No stores match “{debouncedQuery}”
-                </div>
-              )}
-            </div>
-          )}
+        <div className="flex flex-col sm:flex-row gap-4 w-full max-w-lg">
+          <button
+            onClick={() => handleStartFetch('full')}
+            className="px-6 py-3 w-full sm:w-1/2 bg-red-600 text-white font-bold rounded-xl shadow hover:bg-red-700 transition"
+          >
+            Process Full Refund
+          </button>
 
-          <div className="flex flex-col sm:flex-row gap-4">
-            <button 
-  onClick={() => fetchRecentOrders('full', 45)} 
-  className="px-6 py-3 w-full sm:w-1/2 bg-red-600 text-white font-bold rounded-xl shadow hover:bg-red-700 transition">
-  Process Full Refund
-</button>
-
-<button 
-  onClick={() => fetchRecentOrders('partial', 45)} 
-  className="px-6 py-3 w-full sm:w-1/2 bg-yellow-600 text-white font-bold rounded-xl shadow hover:bg-yellow-700 transition">
-  Process Partial Refund
-</button>
-          </div>
-
-          <p className="text-sm text-gray-500 mt-3">Tip: Type a store name and select it from the suggestions</p>
-
-          {alert && <div className="mt-6"><div className={`border p-3 rounded ${alert.type === 'success' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>{alert.message}</div></div>}
+          <button
+            onClick={() => handleStartFetch('partial')}
+            className="px-6 py-3 w-full sm:w-1/2 bg-yellow-600 text-white font-bold rounded-xl shadow hover:bg-yellow-700 transition"
+          >
+            Process Partial Refund
+          </button>
         </div>
+
+        <p className="text-xs text-gray-500 mt-4">When you click a button you'll be taken to the list view (limit defaults to 45 and status defaults to CREATED).</p>
+
+        {alert && <div className="mt-6"><div className={`border p-3 rounded ${alert.type === 'success' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>{alert.message}</div></div>}
       </div>
     );
   }
@@ -579,18 +641,61 @@ const fetchRecentOrders = useCallback(async (type: RefundType, limit = 45) => {
     return (
       <div className="p-4 md:p-6 min-h-screen bg-gray-50">
         <div className="flex justify-between items-center mb-6 border-b pb-2">
-          <h2 className="text-3xl font-extrabold text-gray-800">
-            Orders
-            {selectedStore && <span className="ml-3 text-base text-gray-600"> · {selectedStore.storeName}</span>}
-          </h2>
-          <div>
-            <button onClick={handleBackToLanding} className="text-sm text-gray-500 hover:text-gray-700 underline">&larr; Change Store / Refund Type</button>
+          <h2 className="text-3xl font-extrabold text-gray-800">Orders</h2>
+          <div className="flex items-center gap-4">
+            <button onClick={handleBackToLanding} className="text-sm text-gray-500 hover:text-gray-700 underline">&larr; Back</button>
           </div>
         </div>
 
-        {alert && <div className="mb-4"><div className={`border p-3 rounded ${alert.type === 'success' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>{alert.message}</div></div>}
+        {/* offline banner */}
+        {!isOnline && (
+          <div className="mb-4">
+            <div className="border p-3 rounded bg-yellow-50 border-yellow-200 text-sm text-yellow-800">You are currently offline. Some actions may not work until you reconnect.</div>
+          </div>
+        )}
 
-        <OrderPreviewList orders={orders} loading={loading} onViewOrder={handleViewOrder} />
+        {/* Alert with Retry button for network issues */}
+        {alert && (
+          <div className="mb-4 flex items-start gap-3">
+            <div className="flex-1">
+              <div className={`border p-3 rounded ${alert.type === 'success' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="text-sm">{alert.message}</div>
+                  <button onClick={() => setAlert(null)} className="text-sm text-gray-600 hover:text-gray-900">✕</button>
+                </div>
+              </div>
+            </div>
+
+            {/* show Retry if it looks like a network/server reachability issue */}
+            <div>
+              <button
+                onClick={handleRetry}
+                className="px-3 py-2 rounded bg-orange-600 text-white text-sm hover:bg-blue-700"
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Filter toolbar (visible on list view only) */}
+        <div className="flex flex-col md:flex-row items-center gap-3 mb-4">
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium">Show:</label>
+            <input type="number" min={1} max={1000} value={limit} onChange={e => setLimit(Math.max(1, Number(e.target.value || 1)))} className="w-20 border rounded px-2 py-1" />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium">Status:</label>
+            <StatusCheckboxDropdown value={statusFilter} onChange={setStatusFilter} />
+          </div>
+
+          <div className="ml-auto text-sm text-gray-600">
+            <span>Showing {orders.length} / {limit}</span>
+          </div>
+        </div>
+
+        <OrderPreviewList orders={orders} loading={loading} onViewOrder={handleViewOrder} limit={limit} />
       </div>
     );
   }

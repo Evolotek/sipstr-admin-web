@@ -85,6 +85,13 @@ export function CouponsModule() {
     // no-op
   }, []);
 
+  // Convert `error` into the small centered alert popup (keeps existing setError usages intact)
+  useEffect(() => {
+    if (!error) return;
+    setAlertMessage(error);
+    setError(null);
+  }, [error]);
+
   /* ---------- load offers & normalize ---------- */
 
   async function loadGlobalOffers() {
@@ -385,6 +392,7 @@ async function openConsumptionModal(offerId: number) {
 }
 
 
+
   /* ---------- render helpers ---------- */
   const renderRows = () =>
     offers.map((o) => (
@@ -442,7 +450,10 @@ async function openConsumptionModal(offerId: number) {
         </button>
       </div>
 
-      {error && <div style={{ backgroundColor: "#fee", color: "#c33", padding: 12, borderRadius: 6, marginBottom: 12 }}>{error}</div>}
+      {/* show small alert popup instead of the big red banner when alertMessage is active */}
+      {!alertMessage && error && (
+        <div style={{ backgroundColor: "#fee", color: "#c33", padding: 12, borderRadius: 6, marginBottom: 12 }}>{error}</div>
+      )}
 
       {/* Offers table */}
       <div style={{ background: "white", borderRadius: 8, boxShadow: "0 1px 4px rgba(0,0,0,0.06)", overflowX: "auto" }}>
@@ -711,7 +722,7 @@ async function openConsumptionModal(offerId: number) {
         <div>
           <h3 style={{ margin: 0, fontSize: 18, color: "#0f172a" }}>Consumption History</h3>
           <div style={{ marginTop: 8, color: "#475569", fontSize: 13 }}>
-            <strong>Offer ID:</strong> {consumption?.offerId ?? "-"}{" "}
+            <strong>Offer ID:</strong> {consumption?.offerId ?? "-"} {" "}
             <span style={{ marginLeft: 12, display: "inline-flex", gap: 8, alignItems: "center" }}>
               <span style={{ background: "#eef2ff", color: "#4f46e5", padding: "4px 8px", borderRadius: 999, fontSize: 12 }}>
                 Coupon: {consumption?.couponCode ?? "-"}
