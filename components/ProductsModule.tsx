@@ -1,3 +1,4 @@
+// ProductModules.tsx
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -5,6 +6,102 @@ import { apiService } from "@/services/apiService";
 import { Product } from "@/services/types";
 import ProductModal from "@/components/ProductModal";
 import VariantModal from "@/components/VariantModal";
+
+/* ---------------- BCP-style AlertDialog (used by ProductModules) ---------------- */
+type CustomAlert = {
+  isOpen: boolean;
+  message: string;
+  isConfirm: boolean;
+  onConfirm?: () => void;
+  onCancel?: () => void;
+};
+
+const AlertDialog: React.FC<{ alert: CustomAlert; onClose: () => void }> = ({ alert, onClose }) => {
+  if (!alert.isOpen) return null;
+
+  const handleConfirm = async () => {
+    try {
+      if (alert.onConfirm) await alert.onConfirm();
+    } finally {
+      onClose();
+    }
+  };
+
+  const handleCancel = () => {
+    if (alert.onCancel) alert.onCancel();
+    onClose();
+  };
+
+  return (
+    <div
+      role={alert.isConfirm ? "dialog" : "alertdialog"}
+      aria-modal="true"
+      style={{
+        position: "fixed",
+        inset: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 9999,
+        background: "rgba(0,0,0,0.35)",
+        padding: 16,
+      }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: 420,
+          maxWidth: "100%",
+          background: "#fff",
+          borderRadius: 10,
+          padding: 20,
+          boxShadow: "0 8px 30px rgba(0,0,0,0.12)",
+        }}
+      >
+        <div style={{ marginBottom: 8, fontSize: 18, fontWeight: 700, color: "#222" }}>
+          {alert.isConfirm ? "Please confirm" : "Note"}
+        </div>
+
+        <div style={{ marginBottom: 18, color: "#333", lineHeight: 1.35 }}>{alert.message}</div>
+
+        <div style={{ display: "flex", gap: 10, justifyContent: alert.isConfirm ? "flex-end" : "center" }}>
+          {alert.isConfirm && (
+            <button
+              onClick={handleCancel}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 6,
+                border: "1px solid #ccc",
+                background: "#fff",
+                cursor: "pointer",
+              }}
+            >
+              Cancel
+            </button>
+          )}
+
+          <button
+            onClick={handleConfirm}
+            style={{
+              padding: "8px 14px",
+              borderRadius: 6,
+              border: "none",
+              background: "#FF6600",
+              color: "#fff",
+              cursor: "pointer",
+              fontWeight: 600,
+              boxShadow: "0 4px 12px rgba(255,102,0,0.12)",
+            }}
+          >
+            {alert.isConfirm ? "Confirm" : "OK"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+/* ------------------------------------------------------------------------------- */
 
 type FilterOption = "ALL" | "ACTIVE" | "INACTIVE";
 
@@ -17,7 +114,19 @@ const ProductModules: React.FC = () => {
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [filter, setFilter] = useState<FilterOption>("ALL"); // <-- new filter state
+  const [filter, setFilter] = useState<FilterOption>("ALL");
+
+  // Custom alert state (BCP-style)
+  const [customAlert, setCustomAlert] = useState<CustomAlert>({
+    isOpen: false,
+    message: "",
+    isConfirm: false,
+  });
+
+  const showAlert = (message: string, isConfirm = false, onConfirm?: () => void, onCancel?: () => void) => {
+    setCustomAlert({ isOpen: true, message, isConfirm, onConfirm, onCancel });
+  };
+  const closeAlert = () => setCustomAlert((s) => ({ ...s, isOpen: false }));
 
   // Fetch products
   const fetchProducts = async () => {
@@ -27,6 +136,7 @@ const ProductModules: React.FC = () => {
       setFilteredProducts(data);
     } catch (err) {
       console.error("Failed to fetch products:", err);
+      showAlert("Failed to fetch products.", false);
     }
   };
 
@@ -34,7 +144,7 @@ const ProductModules: React.FC = () => {
     fetchProducts();
   }, []);
 
-  // Filtering logic: search + active/inactive filter
+  // Filtering logic
   useEffect(() => {
     const term = searchTerm.trim().toLowerCase();
 
@@ -51,75 +161,113 @@ const ProductModules: React.FC = () => {
       const isActive = (p as any).isActive ?? (p as any).active ?? false;
       if (filter === "ALL") return true;
       if (filter === "ACTIVE") return Boolean(isActive);
-      return !Boolean(isActive); // INACTIVE
+      return !Boolean(isActive);
     };
 
     setFilteredProducts(products.filter((p) => matchesSearch(p) && matchesFilter(p)));
   }, [searchTerm, filter, products]);
 
-  // Handle product save (add or update) — parent receives full product object
+  // Product create/update handler (shows success)
   const handleProductSaved = (savedProduct: Product) => {
+    const existed = products.some((p) => p.uuid === savedProduct.uuid);
+
     setProducts((prev) => {
       const exists = prev.find((p) => p.uuid === savedProduct.uuid);
-      if (exists) {
-        return prev.map((p) => (p.uuid === savedProduct.uuid ? savedProduct : p));
-      } else {
-        return [savedProduct, ...prev];
-      }
+      if (exists) return prev.map((p) => (p.uuid === savedProduct.uuid ? savedProduct : p));
+      return [savedProduct, ...prev];
     });
 
     setFilteredProducts((prev) => {
       const exists = prev.find((p) => p.uuid === savedProduct.uuid);
-      if (exists) {
-        return prev.map((p) => (p.uuid === savedProduct.uuid ? savedProduct : p));
-      } else {
-        return [savedProduct, ...prev];
-      }
+      if (exists) return prev.map((p) => (p.uuid === savedProduct.uuid ? savedProduct : p));
+      return [savedProduct, ...prev];
     });
+
+    const verb = existed ? "updated" : "created";
+    showAlert(`${savedProduct.productName ?? "Product"} ${verb} successfully.`, false);
   };
 
-  // Handle variant added
-  const handleVariantAdded = (newVariant: any) => {
+  // UPDATED: parent owns variant success messages (add/update)
+  const handleVariantAdded = (incomingVariant: any, productUuidArg?: string) => {
+    const ownerUuid = productUuidArg ?? selectedProductUuid;
+    if (!ownerUuid) return;
+
+    let isNew = true;
+
     setProducts((prev) =>
-      prev.map((product) =>
-        product.uuid === selectedProductUuid
-          ? { ...product, variantsDTO: [...(product.variantsDTO || []), newVariant] }
-          : product
-      )
+      prev.map((product) => {
+        if (product.uuid !== ownerUuid) return product;
+
+        const variants = product.variantsDTO ?? [];
+        const exists = variants.find((v: any) => v.variantId === incomingVariant.variantId);
+
+        let newVariants;
+        if (exists) {
+          isNew = false;
+          newVariants = variants.map((v: any) => (v.variantId === incomingVariant.variantId ? incomingVariant : v));
+        } else {
+          newVariants = [...variants, incomingVariant];
+        }
+
+        return { ...product, variantsDTO: newVariants };
+      })
     );
+
+    setFilteredProducts((prev) =>
+      prev.map((product) => {
+        if (product.uuid !== ownerUuid) return product;
+
+        const variants = product.variantsDTO ?? [];
+        const exists = variants.find((v: any) => v.variantId === incomingVariant.variantId);
+
+        let newVariants;
+        if (exists) {
+          newVariants = variants.map((v: any) => (v.variantId === incomingVariant.variantId ? incomingVariant : v));
+        } else {
+          newVariants = [...variants, incomingVariant];
+        }
+
+        return { ...product, variantsDTO: newVariants };
+      })
+    );
+
+    if (isNew) showAlert("Variant added successfully!", false);
+    else showAlert("Variant updated successfully!", false);
   };
 
-  // Toggle active status quickly from table (uses isActive with fallback to active)
+  // Toggle active
   const toggleActive = async (product: Product) => {
     try {
       const current = (product as any).isActive ?? (product as any).active ?? false;
       const desired = !current;
-      // Send the backend the field it expects: isActive
       const updated = await apiService.updateProduct(product.uuid!, { isActive: desired });
       const newProduct =
-        updated && (updated as Product).uuid
-          ? (updated as Product)
-          : { ...product, isActive: desired, active: desired };
+        updated && (updated as Product).uuid ? (updated as Product) : { ...product, isActive: desired, active: desired };
       setProducts((prev) => prev.map((p) => (p.uuid === product.uuid ? newProduct : p)));
       setFilteredProducts((prev) => prev.map((p) => (p.uuid === product.uuid ? newProduct : p)));
     } catch (err) {
       console.error("Failed to toggle active:", err);
-      alert("Failed to update product status");
+      showAlert("Failed to update product status", false);
     }
   };
 
   // Delete product
-  const handleDelete = async (product: Product) => {
-    if (!confirm(`Are you sure you want to delete "${product.productName}"?`)) return;
-    try {
-      await apiService.deleteProduct(product.uuid!);
-      setProducts((prev) => prev.filter((p) => p.uuid !== product.uuid));
-      setFilteredProducts((prev) => prev.filter((p) => p.uuid !== product.uuid));
-      alert("Product deleted successfully!");
-    } catch (err) {
-      console.error(err);
-      alert("Failed to delete product");
-    }
+  const handleDeleteProduct = async (product: Product) => {
+    showAlert(
+      `Are you sure you want to delete "${product.productName}"?`,
+      true,
+      async () => {
+        try {
+          await apiService.deleteProduct(product.uuid!);
+          setProducts((prev) => prev.filter((p) => p.uuid !== product.uuid));
+          setFilteredProducts((prev) => prev.filter((p) => p.uuid !== product.uuid));
+          showAlert("Product deleted successfully!", false);
+        } catch (err) {
+          console.error(err);
+          showAlert("Failed to delete product", false);
+        }
+      }
+    );
   };
 
   return (
@@ -149,7 +297,6 @@ const ProductModules: React.FC = () => {
           className="border border-gray-300 rounded px-3 py-2 w-full text-black"
         />
 
-        {/* Filter select */}
         <div>
           <label htmlFor="activeFilter" className="sr-only">
             Filter Active
@@ -198,12 +345,9 @@ const ProductModules: React.FC = () => {
                 <td className="border p-2">{product.categoryName || "-"}</td>
                 <td className="border p-2">{product.brand || "-"}</td>
 
-                {/* Active column: quick toggle */}
                 <td className="border p-2 text-center">
                   <button
-                    className={`px-3 py-1 rounded ${
-                      isActive ? "bg-green-500 text-white" : "bg-gray-300 text-black"
-                    }`}
+                    className={`px-3 py-1 rounded ${isActive ? "bg-green-500 text-white" : "bg-gray-300 text-black"}`}
                     onClick={() => toggleActive(product)}
                   >
                     {isActive ? "Active" : "Inactive"}
@@ -234,7 +378,7 @@ const ProductModules: React.FC = () => {
 
                   <button
                     className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600"
-                    onClick={() => handleDelete(product)}
+                    onClick={() => handleDeleteProduct(product)}
                   >
                     Delete
                   </button>
@@ -246,20 +390,18 @@ const ProductModules: React.FC = () => {
       </table>
 
       {/* Modals */}
-      <ProductModal
-        isOpen={isProductModalOpen}
-        onClose={() => setIsProductModalOpen(false)}
-        product={editingProduct}
-        onProductSaved={handleProductSaved}
-      />
+      <ProductModal isOpen={isProductModalOpen} onClose={() => setIsProductModalOpen(false)} product={editingProduct} onProductSaved={handleProductSaved} />
 
       <VariantModal
         isOpen={isVariantModalOpen}
         onClose={() => setIsVariantModalOpen(false)}
         productUuid={selectedProductUuid}
         productId={selectedProductNumericId}
-        onVariantAdded={handleVariantAdded}
+        onVariantAdded={(variant) => handleVariantAdded(variant, selectedProductUuid ?? undefined)}
       />
+
+      {/* AlertDialog */}
+      <AlertDialog alert={customAlert} onClose={closeAlert} />
     </div>
   );
 };

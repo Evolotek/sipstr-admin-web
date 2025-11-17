@@ -1,3 +1,4 @@
+// UsersModule.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -5,16 +6,103 @@ import { apiService } from "@/services/apiService";
 import { CrudTable } from "./CrudTable";
 import { User } from "@/services/types";
 
-/**
- * UsersModule (ready-to-paste)
- *
- * - Uses server-side pagination via apiService.getUsers(page, size)
- * - Displays server totalElements / totalPages
- * - Does client-side search only within the currently loaded page
- * - After create: reloads page 0 from server so counts are correct
- */
-
 type AppUser = Partial<User & { role?: any }>;
+
+/* ------------------ BCP-style AlertDialog ------------------ */
+type CustomAlert = {
+  isOpen: boolean;
+  message: string;
+  isConfirm: boolean;
+  onConfirm?: () => Promise<void> | void;
+  onCancel?: () => void;
+};
+
+const AlertDialog: React.FC<{ alert: CustomAlert; onClose: () => void }> = ({ alert, onClose }) => {
+  if (!alert.isOpen) return null;
+
+  const handleConfirm = async () => {
+    try {
+      if (alert.onConfirm) await alert.onConfirm();
+    } finally {
+      onClose();
+    }
+  };
+
+  const handleCancel = () => {
+    if (alert.onCancel) alert.onCancel();
+    onClose();
+  };
+
+  return (
+    <div
+      role={alert.isConfirm ? "dialog" : "alertdialog"}
+      aria-modal="true"
+      style={{
+        position: "fixed",
+        inset: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 9999,
+        background: "rgba(0,0,0,0.35)",
+        padding: 16,
+      }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: 420,
+          maxWidth: "100%",
+          background: "#fff",
+          borderRadius: 10,
+          padding: 20,
+          boxShadow: "0 8px 30px rgba(0,0,0,0.12)",
+        }}
+      >
+        <div style={{ marginBottom: 8, fontSize: 18, fontWeight: 700, color: "#222" }}>
+          {alert.isConfirm ? "Please confirm" : "Notice"}
+        </div>
+
+        <div style={{ marginBottom: 18, color: "#333", lineHeight: 1.35 }}>{alert.message}</div>
+
+        <div style={{ display: "flex", gap: 10, justifyContent: alert.isConfirm ? "flex-end" : "center" }}>
+          {alert.isConfirm && (
+            <button
+              onClick={handleCancel}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 6,
+                border: "1px solid #ccc",
+                background: "#fff",
+                cursor: "pointer",
+              }}
+            >
+              Cancel
+            </button>
+          )}
+
+          <button
+            onClick={handleConfirm}
+            style={{
+              padding: "8px 14px",
+              borderRadius: 6,
+              border: "none",
+              background: "#FF6600",
+              color: "#fff",
+              cursor: "pointer",
+              fontWeight: 600,
+              boxShadow: "0 4px 12px rgba(255,102,0,0.12)",
+            }}
+          >
+            {alert.isConfirm ? "Confirm" : "OK"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+/* ---------------------------------------------------------- */
 
 export function UsersModule() {
   const [users, setUsers] = useState<AppUser[]>([]);
@@ -30,7 +118,7 @@ export function UsersModule() {
     email: "",
     mobileNumber: "",
     password: "",
-    dob: "", // yyyy-mm-dd
+    dob: "",
     roleName: "CUSTOMER" as "CUSTOMER" | "STORE_OWNER" | "ADMIN",
   });
 
@@ -49,9 +137,19 @@ export function UsersModule() {
   const [totalElements, setTotalElements] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
 
-  // -------------------------
+  // Alert state (BCP-style)
+  const [customAlert, setCustomAlert] = useState<CustomAlert>({
+    isOpen: false,
+    message: "",
+    isConfirm: false,
+  });
+
+  const showAlert = (message: string, isConfirm = false, onConfirm?: () => Promise<void> | void, onCancel?: () => void) => {
+    setCustomAlert({ isOpen: true, message, isConfirm, onConfirm, onCancel });
+  };
+  const closeAlert = () => setCustomAlert((s) => ({ ...s, isOpen: false }));
+
   // Helper: normalize server user -> frontend User shape
-  // -------------------------
   const normalizeUser = (u: any): User => ({
     id: u?.id,
     uuid: u?.uuid,
@@ -60,13 +158,10 @@ export function UsersModule() {
     fullName: u?.fullName ?? u?.name ?? "",
     mobileNumber: u?.mobileNumber,
     dob: u?.dob,
-    // prefer explicit roleName, else try role.name / role.roleName / raw role string
     roleName: (u?.roleName ?? (typeof u?.role === "string" ? u.role : u?.role?.name ?? u?.role?.roleName ?? "CUSTOMER")) as User["roleName"],
   });
 
-  // -------------------------
   // Load users (paginated)
-  // -------------------------
   useEffect(() => {
     loadUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -89,7 +184,6 @@ export function UsersModule() {
         setTotalPages(1);
       } else {
         list = raw?.content ?? [];
-        // try a few common names for totals
         const t =
           typeof raw?.totalElements === "number"
             ? raw.totalElements
@@ -112,30 +206,34 @@ export function UsersModule() {
       console.debug("Frontend: users loaded", { length: normalizedList.length, page, totalElements });
     } catch (err) {
       console.error("Frontend: failed to load users", err);
-      setError(err instanceof Error ? err.message : "Failed to load users");
+      const msg = err instanceof Error ? err.message : "Failed to load users";
+      setError(msg);
+      showAlert(msg, false);
     } finally {
       setLoading(false);
     }
   };
 
-  // -------------------------
-  // Create user (prettend + reload authoritative page)
-  // -------------------------
+  // Create user
   const handleCreateUser = async () => {
     const payload = {
       fullName: createForm.fullName,
-      email: createForm.email ,
+      email: createForm.email,
       mobileNumber: createForm.mobileNumber || undefined,
       password: createForm.password || undefined,
       dob: createForm.dob || undefined,
     };
 
     if (!payload.fullName) {
-      alert("Full name is required");
+      showAlert("Full name is required", false);
       return;
     }
     if (!payload.email && !payload.mobileNumber) {
-      alert("Provide at least email or mobile number");
+      showAlert("Provide at least email or mobile number", false);
+      return;
+    }
+    if(!payload.password){
+      showAlert("Password is required",false);
       return;
     }
 
@@ -151,16 +249,18 @@ export function UsersModule() {
       // reset form
       setCreateForm({ fullName: "", email: "", mobileNumber: "", password: "", dob: "", roleName: "CUSTOMER" });
       setShowAddForm(false);
+
+      // show success
+      showAlert(`${normalized.fullName ?? "User"} created successfully.`, false);
     } catch (err) {
       console.error("Frontend: create user failed", err);
-      setError(err instanceof Error ? err.message : "Failed to create user");
-      alert(err instanceof Error ? err.message : "Failed to create user");
+      const msg = err instanceof Error ? err.message : "Failed to create user";
+      setError(msg);
+      showAlert(msg, false);
     }
   };
 
-  // -------------------------
   // View single user
-  // -------------------------
   const openViewUser = async (uuidOrId?: string | number) => {
     if (!uuidOrId) return;
     try {
@@ -170,14 +270,13 @@ export function UsersModule() {
       setViewUser(normalizeUser(u));
     } catch (err) {
       console.error("Frontend: fetch user failed", err);
-      setError(err instanceof Error ? err.message : "Failed to fetch user");
-      alert(err instanceof Error ? err.message : "Failed to fetch user");
+      const msg = err instanceof Error ? err.message : "Failed to fetch user";
+      setError(msg);
+      showAlert(msg, false);
     }
   };
 
-  // -------------------------
   // Edit (open modal)
-  // -------------------------
   const openEditUser = (user: AppUser) => {
     setEditUser(user);
     setUpdateForm({
@@ -186,18 +285,16 @@ export function UsersModule() {
     });
   };
 
-  // -------------------------
   // Update user (profile fields only)
-  // -------------------------
   const handleUpdateUser = async () => {
     if (!editUser) return;
     const uuid = editUser.uuid || String(editUser.id || "");
     if (!uuid) {
-      alert("Missing user id");
+      showAlert("Missing user id", false);
       return;
     }
     if (!updateForm.fullName) {
-      alert("Full name required");
+      showAlert("Full name required", false);
       return;
     }
 
@@ -208,42 +305,53 @@ export function UsersModule() {
         dob: updateForm.dob || undefined,
       });
       const normalized = normalizeUser(updated);
-      console.log(normalized)
 
       // update local list (if present) — otherwise reload page to be safe
       setUsers((prev) => prev.map((u) => (u.uuid === uuid || String(u.id) === uuid ? normalized : u)));
       setEditUser(null);
       setUpdateForm({ fullName: "", dob: "" });
+
+      // success
+      showAlert("User Update successfully.", false);
     } catch (err) {
       console.error("Frontend: update user failed", err);
-      setError(err instanceof Error ? err.message : "Failed to update user");
-      alert(err instanceof Error ? err.message : "Failed to update user");
+      const msg = err instanceof Error ? err.message : "Failed to update user";
+      setError(msg);
+      showAlert(msg, false);
     }
   };
 
-  // -------------------------
-  // Delete user
-  // -------------------------
+  // Delete user (with confirm)
   const handleDeleteUser = async (uuidOrId?: string | number) => {
     if (!uuidOrId) return;
-    if (!confirm("Delete this user?")) return;
-    try {
-      const uuid = String(uuidOrId);
-      console.info("Frontend: deleting user", uuid);
-      await apiService.deleteUser(uuid);
 
-      // after delete, reload current page to get authoritative content & totals
-      await loadUsers();
-    } catch (err) {
-      console.error("Frontend: delete user failed", err);
-      setError(err instanceof Error ? err.message : "Failed to delete user");
-      alert(err instanceof Error ? err.message : "Failed to delete user");
-    }
+    // Show confirm dialog first
+    showAlert(
+      "Are you sure you want to delete this user?",
+      true,
+      async () => {
+        try {
+          const uuid = String(uuidOrId);
+          console.info("Frontend: deleting user", uuid);
+          await apiService.deleteUser(uuid);
+
+          // after delete, reload current page to get authoritative content & totals
+          await loadUsers();
+
+          // success
+          showAlert("User deleted successfully!", false);
+        } catch (err) {
+          console.error("Frontend: delete user failed", err);
+          const msg = err instanceof Error ? err.message : "Failed to delete user";
+          setError(msg);
+          showAlert(msg, false);
+        }
+      },
+      undefined
+    );
   };
 
-  // -------------------------
   // Filtering (client-side on current page)
-  // -------------------------
   const filtered = users.filter((u) => {
     const q = search.trim().toLowerCase();
     if (!q) return true;
@@ -258,9 +366,7 @@ export function UsersModule() {
   // do NOT slice by page again. `paginated` is the current page's filtered results.
   const paginated = filtered;
 
-  // -------------------------
   // Render
-  // -------------------------
   return (
     <div>
       <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center" }}>
@@ -277,7 +383,7 @@ export function UsersModule() {
               setCreateForm({ fullName: "", email: "", mobileNumber: "", password: "", dob: "", roleName: "CUSTOMER" });
             }
           }}
-          style={{ padding: "8px 12px", background: "#FF6600", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer" }}
+          style={{ padding: "8px 12px", background: "#FF6600", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer"}}
         >
           {showAddForm ? "Cancel" : "+ Add User"}
         </button>
@@ -285,8 +391,6 @@ export function UsersModule() {
           Refresh
         </button>
       </div>
-
-      {error && <div style={{ backgroundColor: "#fee", color: "#c33", padding: 12, borderRadius: 6, marginBottom: 12 }}>{error}</div>}
 
       {showAddForm && (
         <div style={{ background: "#fff", padding: 16, borderRadius: 8, marginBottom: 12, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
@@ -438,6 +542,9 @@ export function UsersModule() {
           </div>
         </div>
       )}
+
+      {/* Global alert/confirm dialog */}
+      <AlertDialog alert={customAlert} onClose={closeAlert} />
     </div>
   );
 }

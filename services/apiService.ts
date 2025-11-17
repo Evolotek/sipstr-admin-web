@@ -47,55 +47,53 @@ export const apiService = {
     deliveryfee,
     tip
   }),
-  updateOrderStatus: async (id: string, status: string) => apiCall<Order>("PUT","/orders/update-status",{id,status}),
-getRecentOrders: async (limit: number = 45, storeUuid?: string): Promise<RecentOrder[]> => {
-  const params = new URLSearchParams({ limit: String(limit) });
-  if (storeUuid) params.append("storeUuid", storeUuid);
-  const res = await apiCall<any>("GET", `/vendor/recent/all?${params.toString()}`);
+  getRecentOrders: async (limit: number = 45, storeUuid?: string): Promise<RecentOrder[]> => {
+      const params = new URLSearchParams({ limit: String(limit) });
+      const res = await apiCall<any>("GET", `/orders/recent/all?${params.toString()}`);
 
-  const arr = Array.isArray(res) ? res : (res?.content ?? res?.data ?? res?.orders ?? []);
-  return (arr || []).map((r: any) => {
-    const toNumber = (v: any) => {
-      if (v == null) return undefined;
-      if (typeof v === "number") return v;
-      const n = Number(v);
-      return isNaN(n) ? undefined : n;
-    };
+      const arr = Array.isArray(res) ? res : (res?.content ?? res?.data ?? res?.orders ?? []);
+      return (arr || []).map((r: any) => {
+        const toNumber = (v: any) => {
+          if (v == null) return undefined;
+          if (typeof v === "number") return v;
+          const n = Number(v);
+          return isNaN(n) ? undefined : n;
+        };
 
-    const shortId = r.orderShortId ?? r.orderShortIdLegacy ?? r.shortId ?? r.orderId ?? r.orderUuid ?? (r.orderUuid ? String(r.orderUuid).slice(0, 8) : "");
+        const shortId = r.orderShortId ?? r.orderShortIdLegacy ?? r.shortId ?? r.orderId ?? r.orderUuid ?? (r.orderUuid ? String(r.orderUuid).slice(0, 8) : "");
 
-    let storeTotal: number | undefined = toNumber(r.storeTotal);
-    if ((storeTotal === undefined || storeTotal === null) && Array.isArray(r.stores) && r.stores.length > 0) {
-      if (storeUuid) {
-        const matched = r.stores.find((s: any) => (s.storeUuid ?? s.uuid ?? s.id) === storeUuid);
-        if (matched) {
-          storeTotal = toNumber(matched.adjustedStoreTotal ?? matched.originalStoreTotal ?? matched.storeTotal ?? matched.storeTotalString);
-        }
-      }
-      if (storeTotal === undefined) {
-        const first = r.stores[0];
-        storeTotal = toNumber(first?.adjustedStoreTotal ?? first?.originalStoreTotal ?? first?.storeTotal ?? first?.storeTotalString);
-      }
-    }
+        let storeTotal: number | undefined = toNumber(r.storeTotal);
+        if ((storeTotal === undefined || storeTotal === null) && Array.isArray(r.stores) && r.stores.length > 0) {
+          if (storeUuid) {
+            const matched = r.stores.find((s: any) => (s.storeUuid ?? s.uuid ?? s.id) === storeUuid);
+            if (matched) {
+              storeTotal = toNumber(matched.adjustedStoreTotal ?? matched.originalStoreTotal ?? matched.storeTotal ?? matched.storeTotalString);
+            }
+          }
+          if (storeTotal === undefined) {
+            const first = r.stores[0];
+            storeTotal = toNumber(first?.adjustedStoreTotal ?? first?.originalStoreTotal ?? first?.storeTotal ?? first?.storeTotalString);
+          }
+        }
 
-    if (storeTotal === undefined) {
-      storeTotal = toNumber(r.originalTotal ?? r.adjustedTotal ?? r.total ?? r.orderTotal);
-    }
+        if (storeTotal === undefined) {
+          storeTotal = toNumber(r.originalTotal ?? r.adjustedTotal ?? r.total ?? r.orderTotal);
+        }
 
-    return {
-      orderShortId: String(shortId ?? ""),
-      customerName: r.userName ?? r.customerName ?? r.userFullName ?? r.name ?? "",
-      address: r.address ?? r.deliveryAddress ?? undefined,
-      storeTotal: storeTotal,
-      updatedAt: r.updatedAt ?? r.orderInitiatedAt ?? r.createdAt ?? undefined,
-      deliveryTime: r.estimatedDeliveryTime ?? r.deliveryTime ?? undefined,
-      orderStatus: r.orderStatus ?? r.storeStatus ?? undefined,
-      originalTotal: toNumber(r.originalTotal ?? r.orderTotal ?? r.total),
-      storeUuid: storeUuid ?? r.storeUuid ?? (Array.isArray(r.stores) && r.stores[0] ? (r.stores[0].storeUuid ?? r.stores[0].uuid) : undefined),
-      __raw: r
-    } as RecentOrder;
-  });
-},
+        return {
+          orderShortId: String(shortId ?? ""),
+          customerName: r.userName ?? r.customerName ?? r.userFullName ?? r.name ?? "",
+          address: r.address ?? r.deliveryAddress ?? undefined,
+          storeTotal: storeTotal,
+          updatedAt: r.updatedAt ?? r.orderInitiatedAt ?? r.createdAt ?? undefined,
+          deliveryTime: r.estimatedDeliveryTime ?? r.deliveryTime ?? undefined,
+          orderStatus: r.orderStatus ?? r.storeStatus ?? undefined,
+          originalTotal: toNumber(r.originalTotal ?? r.orderTotal ?? r.total),
+          storeUuid: storeUuid ?? r.storeUuid ?? (Array.isArray(r.stores) && r.stores[0] ? (r.stores[0].storeUuid ?? r.stores[0].uuid) : undefined),
+          __raw: r
+        } as RecentOrder;
+      });
+  },
 
 
 

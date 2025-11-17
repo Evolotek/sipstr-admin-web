@@ -1,129 +1,253 @@
-"use client"
+// RolesModule.tsx
+"use client";
 
-import { useState, useEffect, useRef } from "react"
-import { apiService } from "@/services/apiService"
-import { CrudTable } from "./CrudTable"
-import { Role } from "@/services/types"
+import { useState, useEffect, useRef } from "react";
+import { apiService } from "@/services/apiService";
+import { CrudTable } from "./CrudTable";
+import { Role } from "@/services/types";
+
+/* ------------------ BCP-style AlertDialog ------------------ */
+type CustomAlert = {
+  isOpen: boolean;
+  message: string;
+  isConfirm: boolean;
+  onConfirm?: () => Promise<void> | void;
+  onCancel?: () => void;
+};
+
+const AlertDialog: React.FC<{ alert: CustomAlert; onClose: () => void }> = ({ alert, onClose }) => {
+  if (!alert.isOpen) return null;
+
+  const handleConfirm = async () => {
+    try {
+      if (alert.onConfirm) await alert.onConfirm();
+    } finally {
+      onClose();
+    }
+  };
+
+  const handleCancel = () => {
+    if (alert.onCancel) alert.onCancel();
+    onClose();
+  };
+
+  return (
+    <div
+      role={alert.isConfirm ? "dialog" : "alertdialog"}
+      aria-modal="true"
+      style={{
+        position: "fixed",
+        inset: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 9999,
+        background: "rgba(0,0,0,0.35)",
+        padding: 16,
+      }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: 420,
+          maxWidth: "100%",
+          background: "#fff",
+          borderRadius: 10,
+          padding: 20,
+          boxShadow: "0 8px 30px rgba(0,0,0,0.12)",
+        }}
+      >
+        <div style={{ marginBottom: 8, fontSize: 18, fontWeight: 700, color: "#222" }}>
+          {alert.isConfirm ? "Please confirm" : "Notice"}
+        </div>
+
+        <div style={{ marginBottom: 18, color: "#333", lineHeight: 1.35 }}>{alert.message}</div>
+
+        <div style={{ display: "flex", gap: 10, justifyContent: alert.isConfirm ? "flex-end" : "center" }}>
+          {alert.isConfirm && (
+            <button
+              onClick={handleCancel}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 6,
+                border: "1px solid #ccc",
+                background: "#fff",
+                cursor: "pointer",
+              }}
+            >
+              Cancel
+            </button>
+          )}
+
+          <button
+            onClick={handleConfirm}
+            style={{
+              padding: "8px 14px",
+              borderRadius: 6,
+              border: "none",
+              background: "#FF6600",
+              color: "#fff",
+              cursor: "pointer",
+              fontWeight: 600,
+              boxShadow: "0 4px 12px rgba(255,102,0,0.12)",
+            }}
+          >
+            {alert.isConfirm ? "Confirm" : "OK"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+/* ---------------------------------------------------------- */
 
 export function RolesModule() {
-  const [roles, setRoles] = useState<Role[]>([])
-  const [allPermissions, setAllPermissions] = useState<string[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [allPermissions, setAllPermissions] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const [showAddModal, setShowAddModal] = useState(false)
+  const [showAddModal, setShowAddModal] = useState(false);
   const [formData, setFormData] = useState<{ name: string; description: string; permissions: string[] }>({
     name: "",
     description: "",
     permissions: [],
-  })
+  });
 
   // Manage permissions modal state
-  const [permissionModalOpen, setPermissionModalOpen] = useState(false)
-  const [permissionModalMode, setPermissionModalMode] = useState<"add" | "remove">("add")
-  const [selectedRole, setSelectedRole] = useState<Role | null>(null)
-  const [selectedPermissions, setSelectedPermissions] = useState<string[]>([])
+  const [permissionModalOpen, setPermissionModalOpen] = useState(false);
+  const [permissionModalMode, setPermissionModalMode] = useState<"add" | "remove">("add");
+  const [selectedRole, setSelectedRole] = useState<Role | null>(null);
+  const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
 
-  const [dropdownOpen, setDropdownOpen] = useState(false)
-  const dropdownRef = useRef<HTMLDivElement>(null)
-  const [search, setSearch] = useState("")
-  const [activeRoleId, setActiveRoleId] = useState<string | null>(null)
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [search, setSearch] = useState("");
+  const [activeRoleId, setActiveRoleId] = useState<string | null>(null);
+
+  // Alert state (BCP-style)
+  const [customAlert, setCustomAlert] = useState<CustomAlert>({
+    isOpen: false,
+    message: "",
+    isConfirm: false,
+  });
+
+  const showAlert = (message: string, isConfirm = false, onConfirm?: () => Promise<void> | void, onCancel?: () => void) => {
+    setCustomAlert({ isOpen: true, message, isConfirm, onConfirm, onCancel });
+  };
+  const closeAlert = () => setCustomAlert((s) => ({ ...s, isOpen: false }));
 
   useEffect(() => {
-    loadRoles()
-    loadPermissions()
-  }, [])
+    loadRoles();
+    loadPermissions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setDropdownOpen(false)
+        setDropdownOpen(false);
       }
-    }
-    document.addEventListener("mousedown", handleClickOutside)
-    return () => document.removeEventListener("mousedown", handleClickOutside)
-  }, [])
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const loadRoles = async () => {
-    setLoading(true)
+    setLoading(true);
     try {
-      const data = await apiService.getRoles()
-      setRoles(data)
+      const data = await apiService.getRoles();
+      setRoles(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load roles")
+      const msg = err instanceof Error ? err.message : "Failed to load roles";
+      setError(msg);
+      showAlert(msg, false);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const loadPermissions = async () => {
     try {
-      const perms = await apiService.getRolePermissions()
-      setAllPermissions(perms)
+      const perms = await apiService.getRolePermissions();
+      setAllPermissions(perms);
     } catch (err) {
-      console.error("Failed to load permissions:", err)
+      console.error("Failed to load permissions:", err);
+      const msg = err instanceof Error ? err.message : "Failed to load permissions";
+      showAlert(msg, false);
     }
-  }
+  };
 
   // --- Add Role ---
   const handleAddRole = async () => {
     if (!formData.name.trim()) {
-      alert("Role name is required")
-      return
+      showAlert("Role name is required", false);
+      return;
+    }
+    if (!formData.permissions || formData.permissions.length === 0) {
+      showAlert("Select at least one permission", false);
+      return;
     }
     try {
       const newRole = await apiService.addRole({
         name: formData.name,
         description: formData.description,
         permissions: formData.permissions,
-      })
-      setRoles((prev) => [...prev, { ...newRole, permissions: formData.permissions }])
-      setFormData({ name: "", description: "", permissions: [] })
-      setShowAddModal(false)
+      });
+      setRoles((prev) => [...prev, { ...newRole, permissions: formData.permissions }]);
+      setFormData({ name: "", description: "", permissions: [] });
+      setShowAddModal(false);
+      showAlert("Role added successfully!", false);
     } catch (err) {
-      console.error(err)
-      alert(err instanceof Error ? err.message : "Failed to add role")
+      console.error(err);
+      const msg = err instanceof Error ? err.message : "Failed to add role";
+      showAlert(msg, false);
     }
-  }
+  };
 
   // --- Delete Role ---
   const handleDeleteRole = async (roleId: string) => {
-    if (!confirm("Are you sure you want to delete this role?")) return
-    try {
-      await apiService.deleteRole(roleId)
-      setRoles((prev) => prev.filter((r) => r.id !== roleId))
-    } catch (err) {
-      console.error(err)
-    }
-  }
+    if (!roleId) return;
+    showAlert(
+      "Are you sure you want to delete this role?",
+      true,
+      async () => {
+        try {
+          await apiService.deleteRole(roleId);
+          setRoles((prev) => prev.filter((r) => r.id !== roleId));
+          showAlert("Role deleted successfully!", false);
+        } catch (err) {
+          console.error(err);
+          const msg = err instanceof Error ? err.message : "Failed to delete role";
+          showAlert(msg, false);
+        }
+      },
+      undefined
+    );
+  };
 
   // --- Manage Permissions single-call helpers (keeps your existing api signatures) ---
-/** Batch-add permissions using apiService.addRolePermissions */
   const addPermissionsBatch = async (roleId: string, perms: string[]) => {
     if (!perms || perms.length === 0) {
       console.warn("addPermissionsBatch called with empty perms", { roleId, perms });
       return;
     }
 
-    // Build payload (we already build inside apiService; keep logs here)
     console.info("Frontend: calling batch add permissions", { roleId, perms });
 
     try {
       const result = await apiService.addRolePermissions(roleId, perms);
       console.info("Frontend: batch add response", result);
 
-      // update local state: merge new perms into role.permissions (avoid duplicates)
       setRoles((prev) =>
-        prev.map((r) =>
-          r.id === roleId ? { ...r, permissions: Array.from(new Set([...(r.permissions || []), ...perms])) } : r
-        )
+        prev.map((r) => (r.id === roleId ? { ...r, permissions: Array.from(new Set([...(r.permissions || []), ...perms])) } : r))
       );
     } catch (err) {
       console.error("Frontend: addPermissionsBatch error", err);
       throw err;
     }
   };
-
 
   const removePermissionsBatch = async (roleId: string, perms: string[]) => {
     if (!perms || perms.length === 0) {
@@ -133,11 +257,9 @@ export function RolesModule() {
     console.info("Frontend: will remove permissions (single call)", { roleId, perms });
 
     try {
-      // apiService.removeRolePermission expects (roleId, permissionArray)
       console.debug("Frontend: calling apiService.removeRolePermission", { roleId, body: { permission: perms } });
       await apiService.removeRolePermission(roleId, perms);
 
-      // update local state
       setRoles((prev) => prev.map((r) => (r.id === roleId ? { ...r, permissions: (r.permissions || []).filter((p) => !perms.includes(p)) } : r)));
     } catch (err) {
       console.error("Frontend: removePermissionsBatch error", err);
@@ -147,58 +269,58 @@ export function RolesModule() {
 
   // Open manage-permissions modal
   const openManagePermissions = (role: Role) => {
-    setSelectedRole(role)
-    setPermissionModalMode("add")
-    setSelectedPermissions([])
-    setPermissionModalOpen(true)
-  }
+    setSelectedRole(role);
+    setPermissionModalMode("add");
+    setSelectedPermissions([]);
+    setPermissionModalOpen(true);
+  };
 
   // Toggle permission checkbox in modal
   const toggleSelectedPermission = (perm: string) => {
-    setSelectedPermissions((prev) => (prev.includes(perm) ? prev.filter((p) => p !== perm) : [...prev, perm]))
-  }
+    setSelectedPermissions((prev) => (prev.includes(perm) ? prev.filter((p) => p !== perm) : [...prev, perm]));
+  };
 
   // Save in modal
   const handleSavePermissions = async () => {
     if (!selectedRole) {
-      alert("No role selected");
+      showAlert("No role selected", false);
       return;
     }
     if (!selectedPermissions.length) {
-      alert("Select at least one permission to save.");
+      showAlert("Select at least one permission to save.", false);
       return;
     }
 
     const roleId = selectedRole.id;
     console.info("Frontend: Save permissions clicked", { roleId, mode: permissionModalMode, selectedPermissions });
 
-    // optionally disable Save button while working (you can add UI state if desired)
     try {
       if (permissionModalMode === "add") {
         await addPermissionsBatch(roleId, selectedPermissions);
+        showAlert("Permissions added successfully!", false);
       } else {
         await removePermissionsBatch(roleId, selectedPermissions);
+        showAlert("Permissions removed successfully!", false);
       }
 
-      // close modal and reset
       setPermissionModalOpen(false);
       setSelectedRole(null);
       setSelectedPermissions([]);
       console.info("Frontend: permissions saved successfully");
     } catch (err: any) {
       console.error("Frontend: failed to save permissions", err);
-      // show backend message if available
-      alert(err?.message || "Failed to update permissions. Check console and network tab.");
+      const msg = err?.message || "Failed to update permissions. Check console and network tab.";
+      showAlert(msg, false);
     }
   };
 
   // --- Filter roles ---
-  const filteredRoles = roles.filter((r) => r.name.toLowerCase().includes(search.toLowerCase()))
+  const filteredRoles = roles.filter((r) => r.name.toLowerCase().includes(search.toLowerCase()));
 
   // --- Table Data ---
   const tableData = filteredRoles.map((role) => ({
     id: role.id,
-    cells: [role.id, role.name, role.description || "-", role.permissions.join(", ")],
+    cells: [role.id, role.name, role.description || "-", (role.permissions || []).join(", ")],
     actions: [
       {
         label: "Manage Permissions",
@@ -209,26 +331,11 @@ export function RolesModule() {
         onClick: () => handleDeleteRole(role.id),
       },
     ],
-    extraComponent: null, // removed inline permission buttons in favor of modal
-  }))
+    extraComponent: null,
+  }));
 
   return (
     <div>
-      {error && (
-        <div
-          style={{
-            backgroundColor: "#fee",
-            color: "#c33",
-            padding: "12px",
-            borderRadius: "4px",
-            marginBottom: "16px",
-            fontSize: "14px",
-          }}
-        >
-          {error}
-        </div>
-      )}
-
       <div style={{ marginBottom: 16, display: "flex", gap: 8, alignItems: "center" }}>
         <input
           type="text"
@@ -260,6 +367,7 @@ export function RolesModule() {
             alignItems: "center",
             zIndex: 100,
           }}
+          onClick={() => setShowAddModal(false)}
         >
           <div
             style={{
@@ -270,6 +378,7 @@ export function RolesModule() {
               boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
               position: "relative",
             }}
+            onClick={(e) => e.stopPropagation()}
           >
             <h3 style={{ marginBottom: 16 }}>Add Role</h3>
 
@@ -348,9 +457,9 @@ export function RolesModule() {
                         checked={formData.permissions.includes(p)}
                         onChange={() => {
                           if (formData.permissions.includes(p)) {
-                            setFormData({ ...formData, permissions: formData.permissions.filter((x) => x !== p) })
+                            setFormData({ ...formData, permissions: formData.permissions.filter((x) => x !== p) });
                           } else {
-                            setFormData({ ...formData, permissions: [...formData.permissions, p] })
+                            setFormData({ ...formData, permissions: [...formData.permissions, p] });
                           }
                         }}
                       />
@@ -408,6 +517,11 @@ export function RolesModule() {
             alignItems: "center",
             zIndex: 200,
           }}
+          onClick={() => {
+            setPermissionModalOpen(false);
+            setSelectedRole(null);
+            setSelectedPermissions([]);
+          }}
         >
           <div
             style={{
@@ -419,6 +533,7 @@ export function RolesModule() {
               boxShadow: "0 6px 20px rgba(0,0,0,0.18)",
               position: "relative",
             }}
+            onClick={(e) => e.stopPropagation()}
           >
             <h3 style={{ marginBottom: 12 }}>Manage Permissions</h3>
 
@@ -434,7 +549,10 @@ export function RolesModule() {
 
             <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
               <button
-                onClick={() => { setPermissionModalMode("add"); setSelectedPermissions([]) }}
+                onClick={() => {
+                  setPermissionModalMode("add");
+                  setSelectedPermissions([]);
+                }}
                 style={{
                   padding: "8px 12px",
                   borderRadius: 6,
@@ -446,7 +564,10 @@ export function RolesModule() {
                 Add
               </button>
               <button
-                onClick={() => { setPermissionModalMode("remove"); setSelectedPermissions([]) }}
+                onClick={() => {
+                  setPermissionModalMode("remove");
+                  setSelectedPermissions([]);
+                }}
                 style={{
                   padding: "8px 12px",
                   borderRadius: 6,
@@ -461,10 +582,9 @@ export function RolesModule() {
 
             <div style={{ maxHeight: 220, overflowY: "auto", border: "1px solid #eee", padding: 10, borderRadius: 6 }}>
               {permissionModalMode === "add" ? (
-                // show permissions not yet assigned
-                allPermissions.filter((p) => !selectedRole.permissions.includes(p)).length ? (
+                allPermissions.filter((p) => !(selectedRole.permissions || []).includes(p)).length ? (
                   allPermissions
-                    .filter((p) => !selectedRole.permissions.includes(p))
+                    .filter((p) => !(selectedRole.permissions || []).includes(p))
                     .map((p) => (
                       <label key={p} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 4px", borderRadius: 4 }}>
                         <input type="checkbox" checked={selectedPermissions.includes(p)} onChange={() => toggleSelectedPermission(p)} />
@@ -474,24 +594,25 @@ export function RolesModule() {
                 ) : (
                   <div style={{ color: "#666" }}>All permissions already assigned to this role.</div>
                 )
+              ) : (selectedRole.permissions || []).length ? (
+                (selectedRole.permissions || []).map((p) => (
+                  <label key={p} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 4px", borderRadius: 4 }}>
+                    <input type="checkbox" checked={selectedPermissions.includes(p)} onChange={() => toggleSelectedPermission(p)} />
+                    {p}
+                  </label>
+                ))
               ) : (
-                // remove mode: show permissions the role currently has
-                selectedRole.permissions.length ? (
-                  selectedRole.permissions.map((p) => (
-                    <label key={p} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 4px", borderRadius: 4 }}>
-                      <input type="checkbox" checked={selectedPermissions.includes(p)} onChange={() => toggleSelectedPermission(p)} />
-                      {p}
-                    </label>
-                  ))
-                ) : (
-                  <div style={{ color: "#666" }}>This role has no permissions to remove.</div>
-                )
+                <div style={{ color: "#666" }}>This role has no permissions to remove.</div>
               )}
             </div>
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
               <button
-                onClick={() => { setPermissionModalOpen(false); setSelectedRole(null); setSelectedPermissions([]) }}
+                onClick={() => {
+                  setPermissionModalOpen(false);
+                  setSelectedRole(null);
+                  setSelectedPermissions([]);
+                }}
                 style={{ padding: "8px 12px", borderRadius: 6, border: "1px solid #ccc", background: "#fff", cursor: "pointer" }}
               >
                 Cancel
@@ -507,11 +628,10 @@ export function RolesModule() {
         </div>
       )}
 
-      <CrudTable
-        columns={["ID", "Name", "Description", "Permissions", "Actions"]}
-        data={tableData}
-        loading={loading}
-      />
+      <CrudTable columns={["ID", "Name", "Description", "Permissions", "Actions"]} data={tableData} loading={loading} />
+
+      {/* Global alert/confirm dialog */}
+      <AlertDialog alert={customAlert} onClose={closeAlert} />
     </div>
-  )
+  );
 }
