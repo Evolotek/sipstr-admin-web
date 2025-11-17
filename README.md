@@ -18,14 +18,20 @@ To hide make them false
 if Admin is not accessible
 Change role in .env.local file
 
---------------------TO-DO-----------
+.env.local
+NEXT_PUBLIC_BASE_URL=http://localhost:8080
+# NEXT_PUBLIC_BASE_URL= https://api.sipstr.com
+NEXT_PUBLIC_ROLE =SUPER_ADMIN
 
-🛠️ Functionality & UI Fixes
-
-Search Logic Enhancement: In modules where search currently uses UUID (e.g., Reports, Offer Management), update the frontend logic to support searching by Name and then use the store name to fetch the corresponding storeUUID for API calls.
-
-Consumption History Check: Investigate and resolve the underlying error when attempting to view the Consumption History for an offer.
-
-Delete Confirmation (Taxonomy): Implement a required confirmation alert/modal before deleting entries in the Brand, Category, and Package Unit modules to prevent accidental data loss.
-
-Alert Alignment: Review and standardize the positioning of all success/error alerts across the application to ensure they are consistently centered (or center-right) and visually aligned.
+NEXT_PUBLIC_FEATURE_DASHBOARD=true
+NEXT_PUBLIC_FEATURE_USERS=true
+NEXT_PUBLIC_FEATURE_ROLES=true
+NEXT_PUBLIC_FEATURE_BRANDS=true
+NEXT_PUBLIC_FEATURE_PRODUCTS=true
+NEXT_PUBLIC_FEATURE_STORES=true
+NEXT_PUBLIC_FEATURE_ORDERS=true
+NEXT_PUBLIC_FEATURE_COUPON=true
+NEXT_PUBLIC_FEATURE_TOP_PICKS=true
+NEXT_PUBLIC_FEATURE_ZONES=true
+NEXT_PUBLIC_FEATURE_REPORTS=true
+NEXT_PUBLIC_FEATURE_SUBSTITUTE=true
