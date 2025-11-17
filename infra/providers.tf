@@ -3,7 +3,7 @@ terraform {
 
   backend "s3" {
     bucket         = "sipstr-terraform-state-bucket"
-    key            = "sipstr-vendor/state/terraform.tfstate"
+    key            = "sipstr-admin/state/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
   }
