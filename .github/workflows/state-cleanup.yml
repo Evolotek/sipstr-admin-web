@@ -1,0 +1,74 @@
+name: Terraform State Cleanup (Remove GoDaddy)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+
+  determine-environment:
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.set-env.outputs.environment }}
+    steps:
+      - name: Set environment based on branch
+        id: set-env
+        run: |
+          if [[ "${GITHUB_REF_NAME}" == "main" ]]; then
+            echo "environment=production" >> $GITHUB_OUTPUT
+          elif [[ "${GITHUB_REF_NAME}" == "release/integration" ]]; then
+            echo "environment=sandbox" >> $GITHUB_OUTPUT
+          else
+            echo "environment=dev" >> $GITHUB_OUTPUT
+          fi
+
+  cleanup:
+    runs-on: ubuntu-latest
+    needs: determine-environment
+    environment: ${{ needs.determine-environment.outputs.environment }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.2
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Terraform Init
+        run: terraform init -input=false -upgrade
+        working-directory: infra
+
+      - name: List Current State Resources
+        run: terraform state list || true
+        working-directory: infra
+
+      - name: Remove GoDaddy Provider From State
+        run: |
+          echo "🔍 Checking for GoDaddy resources..."
+          godaddy_resources=$(terraform state list | grep "godaddy" || true)
+
+          if [ -z "$godaddy_resources" ]; then
+            echo "✅ No GoDaddy resources found in state"
+          else
+            echo "⚠️ Found GoDaddy resources in state:"
+            echo "$godaddy_resources"
+
+            for r in $godaddy_resources; do
+              echo "➡️ Removing $r ..."
+              terraform state rm "$r" || true
+            done
+            echo "✅ Cleanup complete"
+          fi
+        working-directory: infra
