@@ -1,0 +1,125 @@
+name: Deploy Terraform
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Select the branch to deploy"
+        required: true
+        default: "main"
+        type: choice
+        options:
+          - main
+          - release/integration
+          - feature/dev
+  push:
+    branches:
+      - main
+      - release/integration
+      - "*"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  determine-environment:
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.set-env.outputs.environment }}
+    steps:
+      - name: Set environment based on branch
+        id: set-env
+        run: |
+          if [[ "${GITHUB_REF_NAME}" == "main" ]]; then
+            echo "environment=production" >> $GITHUB_OUTPUT
+          elif [[ "${GITHUB_REF_NAME}" == "release/integration" ]]; then
+            echo "environment=sandbox" >> $GITHUB_OUTPUT
+          else
+            echo "environment=dev" >> $GITHUB_OUTPUT
+          fi
+
+  terraform:
+    runs-on: ubuntu-latest
+    needs: determine-environment
+    environment: ${{ needs.determine-environment.outputs.environment }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.2
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Terraform Init
+        run: terraform init -input=false -upgrade
+        working-directory: infra
+
+      - name: Terraform Plan
+        run: terraform plan -input=false -out=tfplan
+        working-directory: infra
+        timeout-minutes: 10
+
+      - name: Terraform Apply
+        run: terraform apply -input=false -auto-approve tfplan
+        working-directory: infra
+        timeout-minutes: 10
+        env:
+          TF_LOG: INFO
+          TF_VAR_env: ${{ needs.determine-environment.outputs.environment }}
+
+      - name: Show ACM DNS Records
+        run: |
+          echo "👉 Add the following DNS records manually in GoDaddy (or wherever your domain is managed):"
+          terraform output -json acm_dns_validation_records | jq -r '.[] | "Name: \(.name)\nType: \(.type)\nValue: \(.value)\n---"'
+        working-directory: infra
+
+      # --------------------------
+      # Build & Deploy Frontend
+      # --------------------------
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build Frontend
+        run: npm run build
+
+      - name: Upload to S3
+        run: |
+          BUCKET=$(terraform -chdir=infra output -raw s3_bucket)
+
+          # Detect frontend build folder (dist or build)
+          if [ -d "dist" ]; then
+            BUILD_DIR="dist"
+          elif [ -d "build" ]; then
+            BUILD_DIR="build"
+          else
+            echo "❌ No build directory found!"
+            exit 1
+          fi
+
+          echo "Uploading $BUILD_DIR/ to s3://$BUCKET/"
+          aws s3 sync $BUILD_DIR/ s3://$BUCKET/ --delete --exact-timestamps
+
+      - name: Invalidate CloudFront Cache
+        run: |
+          DIST_ID=$(terraform -chdir=infra output -raw cloudfront_distribution_id || true)
+          if [ -n "$DIST_ID" ]; then
+            echo "Invalidating CloudFront distribution $DIST_ID"
+            aws cloudfront create-invalidation --distribution-id $DIST_ID --paths "/*"
+          else
+            echo "⚠️ CloudFront distribution ID not found in outputs, skipping invalidation"
+          fi
