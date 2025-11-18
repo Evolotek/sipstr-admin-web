@@ -10,7 +10,7 @@ resource "aws_cloudfront_origin_access_control" "oac" {
 # CloudFront Distribution
 # ------------------------
 resource "aws_cloudfront_distribution" "cdn" {
-  depends_on = [aws_acm_certificate_validation.this]
+  # depends_on = [aws_acm_certificate_validation.this]
 
   origin {
     domain_name = aws_s3_bucket.site.bucket_regional_domain_name
