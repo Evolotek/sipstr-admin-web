@@ -12,6 +12,11 @@ on:
           - main
           - release/integration
           - feature/dev
+      rollback_enabled:
+        description: "⚠️ Destroy infrastructure if deployment fails? (Safety: only works on dispatch)"
+        required: false
+        default: false
+        type: boolean
   push:
     branches:
       - main
@@ -27,16 +32,20 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       environment: ${{ steps.set-env.outputs.environment }}
+      subdomain: ${{ steps.set-env.outputs.subdomain }}
     steps:
-      - name: Set environment based on branch
+      - name: Set environment and subdomain based on branch
         id: set-env
         run: |
           if [[ "${GITHUB_REF_NAME}" == "main" ]]; then
             echo "environment=production" >> $GITHUB_OUTPUT
+            echo "subdomain=admin" >> $GITHUB_OUTPUT
           elif [[ "${GITHUB_REF_NAME}" == "release/integration" ]]; then
             echo "environment=sandbox" >> $GITHUB_OUTPUT
+            echo "subdomain=admin.sandbox" >> $GITHUB_OUTPUT
           else
             echo "environment=dev" >> $GITHUB_OUTPUT
+            echo "subdomain=admin.dev" >> $GITHUB_OUTPUT
           fi
 
   terraform:
@@ -61,6 +70,7 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: Terraform Init
+        id: init
         run: |
           terraform init \
             -backend-config="bucket=sipstr-admin-terraform-state" \
@@ -70,19 +80,26 @@ jobs:
         working-directory: infra
 
       - name: Terraform Plan
+        id: plan
         run: terraform plan -input=false -out=tfplan
         working-directory: infra
         timeout-minutes: 10
+        env:
+          TF_VAR_env: ${{ needs.determine-environment.outputs.environment }}
+          TF_VAR_subdomain: ${{ needs.determine-environment.outputs.subdomain }}
 
       - name: Terraform Apply
+        id: apply
         run: terraform apply -input=false -auto-approve tfplan
         working-directory: infra
         timeout-minutes: 10
         env:
           TF_LOG: INFO
           TF_VAR_env: ${{ needs.determine-environment.outputs.environment }}
+          TF_VAR_subdomain: ${{ needs.determine-environment.outputs.subdomain }}
 
       - name: Show ACM DNS Records
+        if: success() # Only show if apply succeeded
         run: |
           echo "👉 Add the following DNS records manually in GoDaddy (or wherever your domain is managed):"
           terraform output -json acm_dns_validation_records | jq -r '.[] | "Name: \(.name)\nType: \(.type)\nValue: \(.value)\n---"'
@@ -106,11 +123,13 @@ jobs:
         run: |
           BUCKET=$(terraform -chdir=infra output -raw s3_bucket)
 
-          # Detect frontend build folder (dist or build)
+          # Detect frontend build folder (dist or build or out)
           if [ -d "dist" ]; then
             BUILD_DIR="dist"
           elif [ -d "build" ]; then
             BUILD_DIR="build"
+          elif [ -d "out" ]; then
+            BUILD_DIR="out"
           else
             echo "❌ No build directory found!"
             exit 1
@@ -128,3 +147,17 @@ jobs:
           else
             echo "⚠️ CloudFront distribution ID not found in outputs, skipping invalidation"
           fi
+
+      # --------------------------
+      # 🚨 ROLLBACK STEP 🚨
+      # --------------------------
+      - name: ⚠️ Rollback (Destroy Infrastructure)
+        if: failure() && inputs.rollback_enabled == true && steps.init.outcome == 'success'
+        run: |
+          echo "🚨 Deployment FAILED. Rolling back changes (Destroying Infrastructure)..."
+          terraform destroy -auto-approve -input=false
+        working-directory: infra
+        env:
+          TF_LOG: INFO
+          TF_VAR_env: ${{ needs.determine-environment.outputs.environment }}
+          TF_VAR_subdomain: ${{ needs.determine-environment.outputs.subdomain }}

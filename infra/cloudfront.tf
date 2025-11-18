@@ -10,7 +10,7 @@ resource "aws_cloudfront_origin_access_control" "oac" {
 # CloudFront Distribution
 # ------------------------
 resource "aws_cloudfront_distribution" "cdn" {
-  # depends_on = [aws_acm_certificate_validation.this]
+  depends_on = [aws_acm_certificate_validation.this]
 
   origin {
     domain_name = aws_s3_bucket.site.bucket_regional_domain_name
@@ -21,7 +21,7 @@ resource "aws_cloudfront_distribution" "cdn" {
 
   enabled             = true
   is_ipv6_enabled     = true
-  # aliases             = [local.fqdn]
+  aliases             = [local.fqdn]
   comment             = "Frontend CDN for ${local.fqdn}"
   default_root_object = "index.html"   # ✅ SPA entrypoint
 
@@ -46,11 +46,11 @@ resource "aws_cloudfront_distribution" "cdn" {
 
   viewer_certificate {
     # ⚠️ TEMPORARY: Use default cert to allow deployment to finish
-    cloudfront_default_certificate = true
+    # cloudfront_default_certificate = true
 
-    # acm_certificate_arn      = aws_acm_certificate.this.arn
-    # ssl_support_method       = "sni-only"
-    # minimum_protocol_version = "TLSv1.2_2021"
+    acm_certificate_arn      = aws_acm_certificate.this.arn
+    ssl_support_method       = "sni-only"
+    minimum_protocol_version = "TLSv1.2_2021"
   }
 
   tags = local.tags
