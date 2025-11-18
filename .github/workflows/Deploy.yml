@@ -61,7 +61,11 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: Terraform Init
-        run: terraform init -input=false -upgrade
+        run: terraform init \
+          -backend-config="bucket=sipstr-admin-terraform-state" \
+          -backend-config="key=${{ needs.determine-environment.outputs.environment }}/terraform.tfstate" \
+          -backend-config="region=${{ vars.AWS_REGION }}" \
+          -backend-config="encrypt=true"
         working-directory: infra
 
       - name: Terraform Plan

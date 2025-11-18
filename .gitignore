@@ -110,3 +110,5 @@ vite.config.ts.timestamp-*
 # Firebase / DynamoDB local
 .firebase/
 .dynamodb/
+
+.idea
