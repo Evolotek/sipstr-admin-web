@@ -37,6 +37,8 @@ jobs:
       - name: Set environment and subdomain based on branch
         id: set-env
         run: |
+          echo "🔍 GITHUB_REF_NAME = ${GITHUB_REF_NAME}"
+
           if [[ "${GITHUB_REF_NAME}" == "main" ]]; then
             echo "environment=production" >> $GITHUB_OUTPUT
             echo "subdomain=admin" >> $GITHUB_OUTPUT
@@ -48,6 +50,9 @@ jobs:
             echo "subdomain=admin.dev" >> $GITHUB_OUTPUT
           fi
 
+          echo "✅ Selected environment: $(grep environment <<< $(cat $GITHUB_OUTPUT) | cut -d= -f2)"
+          echo "✅ Selected subdomain: $(grep subdomain <<< $(cat $GITHUB_OUTPUT) | cut -d= -f2)"
+  
   terraform:
     runs-on: ubuntu-latest
     needs: determine-environment
