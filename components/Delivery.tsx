@@ -4,9 +4,10 @@ import React, { useEffect, useState } from "react";
 import { deliveryZoneService } from "../services/deliveryZone";
 import { apiService } from "../services/apiService";
 import type { DeliveryZone, CreateDeliveryZoneRequest } from "../services/types";
+import toast, { Toaster } from "react-hot-toast";
+import  MapPreviewGoogle  from "../googlemap/MapPreviewGoogle";
 
-
-/* ----------------- parseKmlToPlacemarks (unchanged from yours) ----------------- */
+/* ----------------- parseKmlToPlacemarks (unchanged) ----------------- */
 function parseKmlToPlacemarks(kmlText: string) {
   const parser = new DOMParser();
   const doc = parser.parseFromString(kmlText, "application/xml");
@@ -163,7 +164,6 @@ function formatValueForKey(key: string, value: any) {
 }
 
 /* ----------------- Component ----------------- */
-
 export default function DeliveryZonesAdmin() {
   const [storeName, setStoreName] = useState("");
   const [stores, setStores] = useState<{ uuid: string; storeName: string }[]>([]);
@@ -180,8 +180,8 @@ export default function DeliveryZonesAdmin() {
   const [isAddHover, setIsAddHover] = useState(false);
 
   // editing states
-  const [editingPlacemarkIndex, setEditingPlacemarkIndex] = useState<number | null>(null); // for imported placemark -> opens manual form
-  const [editingZoneId, setEditingZoneId] = useState<number | null>(null); // for editing an existing zone (calls update)
+  const [editingPlacemarkIndex, setEditingPlacemarkIndex] = useState<number | null>(null); 
+  const [editingZoneId, setEditingZoneId] = useState<number | null>(null); 
 
   const [form, setForm] = useState<CreateDeliveryZoneRequest>({
     zoneName: "",
@@ -246,7 +246,7 @@ export default function DeliveryZonesAdmin() {
       setZones(data || []);
     } catch (err) {
       console.error(err);
-      setError("Failed to fetch zones.");
+      toast.error("Failed to fetch zones.");
     } finally {
       setLoading(false);
     }
@@ -277,7 +277,7 @@ export default function DeliveryZonesAdmin() {
       const parsed = parseKmlToPlacemarks(text);
       if (!parsed.length) setParsingError("No placemarks found in KML");
       setParsedPlacemarks(parsed);
-      setShowModal(true); // open modal to show compact list
+      setShowModal(true); 
       setEditingPlacemarkIndex(null);
       setEditingZoneId(null);
     } catch (err) {
@@ -287,7 +287,7 @@ export default function DeliveryZonesAdmin() {
     }
   };
 
-  /* --- Review imported placemark (opens manual form with that placemark) --- */
+  /* --- Review imported placemark --- */
   const reviewPlacemark = (pm: any, idx: number) => {
     const coords = pm.coordinates.length ? pm.coordinates : [[0, 0]];
     const createReq: CreateDeliveryZoneRequest = {
@@ -302,13 +302,13 @@ export default function DeliveryZonesAdmin() {
     };
     setForm(createReq);
     setEditingPlacemarkIndex(idx);
-    setEditingZoneId(null); // ensure we are not in existing-zone edit mode
+    setEditingZoneId(null); 
   };
 
   /* --- Create/import a single placemark --- */
   const createFromPlacemark = async (pm: any, idx: number) => {
     if (!selectedStoreUuid) {
-      alert("Please select a store first.");
+      toast.error("Please select a store first.");
       return;
     }
     const coords = pm.coordinates.length ? pm.coordinates : [[0, 0]];
@@ -327,11 +327,10 @@ export default function DeliveryZonesAdmin() {
       setUploadingIndex(idx);
       await deliveryZoneService.createDeliveryZone(payload);
       await fetchZones();
+      toast.success("Zone created successfully!");
 
-      // remove the created placemark from state
       setParsedPlacemarks((prev) => {
         const next = prev.filter((_, i) => i !== idx);
-        // if there are no more parsed placemarks, close the modal (avoid showing manual form)
         if (next.length === 0) {
           setShowModal(false);
           setEditingPlacemarkIndex(null);
@@ -339,7 +338,6 @@ export default function DeliveryZonesAdmin() {
         return next;
       });
 
-      // if we were editing this placemark, clear editing state
       if (editingPlacemarkIndex === idx) {
         setEditingPlacemarkIndex(null);
         setForm({
@@ -355,16 +353,15 @@ export default function DeliveryZonesAdmin() {
       }
     } catch (err) {
       console.error(err);
-      alert("Failed to create zone from placemark");
+      toast.error("Failed to create zone from placemark");
     } finally {
       setUploadingIndex(null);
     }
   };
 
-
   const createAllPlacemarks = async () => {
     if (!selectedStoreUuid) {
-      alert("Please select a store first.");
+      toast.error("Please select a store first.");
       return;
     }
     try {
@@ -373,7 +370,7 @@ export default function DeliveryZonesAdmin() {
       }
     } catch (err) {
       console.error(err);
-      alert("Some placemarks may not have been created. Check console or try again.");
+      toast.error("Some placemarks may not have been created.");
     } finally {
       setParsedPlacemarks([]);
       setEditingPlacemarkIndex(null);
@@ -386,15 +383,17 @@ export default function DeliveryZonesAdmin() {
       form.storeUuid = selectedStoreUuid;
     }
     if (!form.storeUuid) {
-      alert("Missing store UUID. Select a store first.");
+      toast.error("Missing store UUID. Select a store first.");
       return;
     }
     setLoading(true);
     try {
       if (editingZoneId != null) {
         await deliveryZoneService.updateDeliveryZone(String(editingZoneId), form);
+        toast.success("Zone updated successfully!");
       } else {
         await deliveryZoneService.createDeliveryZone(form);
+        toast.success("Zone created successfully!");
       }
 
       setShowModal(false);
@@ -404,7 +403,7 @@ export default function DeliveryZonesAdmin() {
       await fetchZones();
     } catch (err) {
       console.error(err);
-      alert(editingZoneId != null ? "Failed to update delivery zone" : "Failed to create delivery zone");
+      toast.error(editingZoneId != null ? "Failed to update delivery zone" : "Failed to create delivery zone");
     } finally {
       setLoading(false);
     }
@@ -416,10 +415,11 @@ export default function DeliveryZonesAdmin() {
     setLoading(true);
     try {
       await deliveryZoneService.deleteDeliveryZone(zone.zoneId.toString());
+      toast.success("Zone deleted successfully!");
       await fetchZones();
     } catch (err) {
       console.error(err);
-      alert("Failed to delete zone");
+      toast.error("Failed to delete zone");
     } finally {
       setLoading(false);
     }
@@ -449,12 +449,7 @@ export default function DeliveryZonesAdmin() {
   return (
     <div style={{ display: "flex", gap: 24, padding: 20, alignItems: "flex-start", fontFamily: "'Inter', system-ui, Arial" }}>
       <div style={{ flex: 1, minHeight: 520, borderRadius: 10, background: "#fff", boxShadow: "0 1px 2px rgba(0,0,0,0.06)", padding: 12 }}>
-        <div style={{ height: 520, borderRadius: 8, background: "#f6f9fb", display: "flex", alignItems: "center", justifyContent: "center", color: "#666" }}>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>Map preview</div>
-            <div style={{ fontSize: 13 }}>Replace with your Google Map / Leaflet map component.</div>
-          </div>
-        </div>
+        <MapPreviewGoogle zones={zones} height={520} />
       </div>
 
       {/* Right: Panel */}
@@ -861,7 +856,7 @@ export default function DeliveryZonesAdmin() {
                   </label>
 
                   <label style={{ display: "flex", flexDirection: "column" }}>
-                    Store UUID
+                    Store UUID (auto)
                     <input value={form.storeUuid || selectedStoreUuid || ""} readOnly style={{ padding: 10, borderRadius: 6, border: "1px solid #eee", background: "#fafafa" }} />
                   </label>
                 </div>
