@@ -4,8 +4,7 @@ import React, { useEffect, useState } from "react";
 import { deliveryZoneService } from "../services/deliveryZone";
 import { apiService } from "../services/apiService";
 import type { DeliveryZone, CreateDeliveryZoneRequest } from "../services/types";
-import toast, { Toaster } from "react-hot-toast";
-import  MapPreviewGoogle  from "../googlemap/MapPreviewGoogle";
+import MapPreviewGoogle from "../googlemap/MapPreviewGoogle";
 
 /* ----------------- parseKmlToPlacemarks (unchanged) ----------------- */
 function parseKmlToPlacemarks(kmlText: string) {
@@ -163,6 +162,102 @@ function formatValueForKey(key: string, value: any) {
   return String(value);
 }
 
+/* ------------------ AlertDialog (copied & adapted from TopPicksModule) ------------------ */
+type CustomAlert = {
+  isOpen: boolean;
+  message: string;
+  isConfirm: boolean;
+  onConfirm?: () => Promise<void> | void;
+  onCancel?: () => void;
+};
+
+const alertStyles = {
+  overlay: {
+    position: "fixed" as const,
+    inset: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 9999,
+    background: "rgba(0,0,0,0.35)",
+    padding: 16,
+  },
+  dialog: {
+    width: 420,
+    maxWidth: "100%",
+    background: "#fff",
+    borderRadius: 10,
+    padding: 20,
+    boxShadow: "0 8px 30px rgba(0,0,0,0.12)",
+  },
+  title: {
+    marginBottom: 8,
+    fontSize: 18,
+    fontWeight: 700,
+    color: "#222",
+  },
+  message: {
+    marginBottom: 18,
+    color: "#333",
+    lineHeight: 1.35,
+  },
+  actions: (isConfirm: boolean) => ({
+    display: "flex",
+    gap: 10,
+    justifyContent: isConfirm ? "flex-end" : "center",
+  }),
+  cancelButton: {
+    padding: "8px 12px",
+    borderRadius: 6,
+    border: "1px solid #ccc",
+    background: "#fff",
+    cursor: "pointer",
+  },
+  confirmButton: {
+    padding: "8px 14px",
+    borderRadius: 6,
+    border: "none",
+    background: "#FF6600",
+    color: "#fff",
+    cursor: "pointer",
+    fontWeight: 600,
+    boxShadow: "0 4px 12px rgba(255,102,0,0.12)",
+  },
+};
+
+const AlertDialog: React.FC<{ alert: CustomAlert; onClose: () => void }> = ({ alert, onClose }) => {
+  if (!alert.isOpen) return null;
+
+  const handleConfirm = async () => {
+    if (alert.onConfirm) await alert.onConfirm();
+    onClose();
+  };
+
+  const handleCancel = () => {
+    alert.onCancel?.();
+    onClose();
+  };
+
+  return (
+    <div role={alert.isConfirm ? "dialog" : "alertdialog"} aria-modal="true" style={alertStyles.overlay} onClick={onClose}>
+      <div style={alertStyles.dialog} onClick={(e) => e.stopPropagation()}>
+        <div style={alertStyles.title}>{alert.isConfirm ? "Please confirm" : "Notice"}</div>
+        <div style={alertStyles.message}>{alert.message}</div>
+        <div style={alertStyles.actions(alert.isConfirm)}>
+          {alert.isConfirm && (
+            <button onClick={handleCancel} style={alertStyles.cancelButton}>
+              Cancel
+            </button>
+          )}
+          <button onClick={handleConfirm} style={alertStyles.confirmButton}>
+            {alert.isConfirm ? "Confirm" : "OK"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 /* ----------------- Component ----------------- */
 export default function DeliveryZonesAdmin() {
   const [storeName, setStoreName] = useState("");
@@ -180,8 +275,8 @@ export default function DeliveryZonesAdmin() {
   const [isAddHover, setIsAddHover] = useState(false);
 
   // editing states
-  const [editingPlacemarkIndex, setEditingPlacemarkIndex] = useState<number | null>(null); 
-  const [editingZoneId, setEditingZoneId] = useState<number | null>(null); 
+  const [editingPlacemarkIndex, setEditingPlacemarkIndex] = useState<number | null>(null);
+  const [editingZoneId, setEditingZoneId] = useState<number | null>(null);
 
   const [form, setForm] = useState<CreateDeliveryZoneRequest>({
     zoneName: "",
@@ -193,6 +288,13 @@ export default function DeliveryZonesAdmin() {
     coordinates: [[0, 0]],
     storeUuid: "",
   });
+
+  /* --- Alert state & helpers (from TopPicks) --- */
+  const [customAlert, setCustomAlert] = useState<CustomAlert>({ isOpen: false, message: "", isConfirm: false });
+  const showAlert = (message: string, isConfirm = false, onConfirm?: () => Promise<void> | void, onCancel?: () => void) => {
+    setCustomAlert({ isOpen: true, message, isConfirm, onConfirm, onCancel });
+  };
+  const closeAlert = () => setCustomAlert((s) => ({ ...s, isOpen: false }));
 
   /* --- Load stores --- */
   useEffect(() => {
@@ -211,7 +313,9 @@ export default function DeliveryZonesAdmin() {
       }
     };
     load();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   /* --- storeName -> uuid resolution --- */
@@ -237,6 +341,7 @@ export default function DeliveryZonesAdmin() {
   const fetchZones = async () => {
     if (!selectedStoreUuid) {
       setError("Select a valid store first");
+      showAlert("Select a valid store first");
       return;
     }
     setError("");
@@ -246,7 +351,7 @@ export default function DeliveryZonesAdmin() {
       setZones(data || []);
     } catch (err) {
       console.error(err);
-      toast.error("Failed to fetch zones.");
+      showAlert("Failed to fetch zones.");
     } finally {
       setLoading(false);
     }
@@ -277,7 +382,7 @@ export default function DeliveryZonesAdmin() {
       const parsed = parseKmlToPlacemarks(text);
       if (!parsed.length) setParsingError("No placemarks found in KML");
       setParsedPlacemarks(parsed);
-      setShowModal(true); 
+      setShowModal(true);
       setEditingPlacemarkIndex(null);
       setEditingZoneId(null);
     } catch (err) {
@@ -302,13 +407,13 @@ export default function DeliveryZonesAdmin() {
     };
     setForm(createReq);
     setEditingPlacemarkIndex(idx);
-    setEditingZoneId(null); 
+    setEditingZoneId(null);
   };
 
   /* --- Create/import a single placemark --- */
   const createFromPlacemark = async (pm: any, idx: number) => {
     if (!selectedStoreUuid) {
-      toast.error("Please select a store first.");
+      showAlert("Please select a store first.");
       return;
     }
     const coords = pm.coordinates.length ? pm.coordinates : [[0, 0]];
@@ -327,7 +432,7 @@ export default function DeliveryZonesAdmin() {
       setUploadingIndex(idx);
       await deliveryZoneService.createDeliveryZone(payload);
       await fetchZones();
-      toast.success("Zone created successfully!");
+      showAlert("Zone created successfully!");
 
       setParsedPlacemarks((prev) => {
         const next = prev.filter((_, i) => i !== idx);
@@ -353,7 +458,7 @@ export default function DeliveryZonesAdmin() {
       }
     } catch (err) {
       console.error(err);
-      toast.error("Failed to create zone from placemark");
+      showAlert("Failed to create zone from placemark");
     } finally {
       setUploadingIndex(null);
     }
@@ -361,7 +466,7 @@ export default function DeliveryZonesAdmin() {
 
   const createAllPlacemarks = async () => {
     if (!selectedStoreUuid) {
-      toast.error("Please select a store first.");
+      showAlert("Please select a store first.");
       return;
     }
     try {
@@ -370,7 +475,7 @@ export default function DeliveryZonesAdmin() {
       }
     } catch (err) {
       console.error(err);
-      toast.error("Some placemarks may not have been created.");
+      showAlert("Some placemarks may not have been created.");
     } finally {
       setParsedPlacemarks([]);
       setEditingPlacemarkIndex(null);
@@ -383,17 +488,17 @@ export default function DeliveryZonesAdmin() {
       form.storeUuid = selectedStoreUuid;
     }
     if (!form.storeUuid) {
-      toast.error("Missing store UUID. Select a store first.");
+      showAlert("Missing store UUID. Select a store first.");
       return;
     }
     setLoading(true);
     try {
       if (editingZoneId != null) {
         await deliveryZoneService.updateDeliveryZone(String(editingZoneId), form);
-        toast.success("Zone updated successfully!");
+        showAlert("Zone updated successfully!");
       } else {
         await deliveryZoneService.createDeliveryZone(form);
-        toast.success("Zone created successfully!");
+        showAlert("Zone created successfully!");
       }
 
       setShowModal(false);
@@ -403,7 +508,7 @@ export default function DeliveryZonesAdmin() {
       await fetchZones();
     } catch (err) {
       console.error(err);
-      toast.error(editingZoneId != null ? "Failed to update delivery zone" : "Failed to create delivery zone");
+      showAlert(editingZoneId != null ? "Failed to update delivery zone" : "Failed to create delivery zone");
     } finally {
       setLoading(false);
     }
@@ -411,18 +516,20 @@ export default function DeliveryZonesAdmin() {
 
   const handleDelete = async (zone: DeliveryZone) => {
     if (!zone.zoneId) return;
-    if (!confirm(`Delete zone "${zone.zoneName}"?`)) return;
-    setLoading(true);
-    try {
-      await deliveryZoneService.deleteDeliveryZone(zone.zoneId.toString());
-      toast.success("Zone deleted successfully!");
-      await fetchZones();
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to delete zone");
-    } finally {
-      setLoading(false);
-    }
+    // replace browser confirm with our AlertDialog confirm
+    showAlert(`Delete zone "${zone.zoneName}"?`, true, async () => {
+      setLoading(true);
+      try {
+        await deliveryZoneService.deleteDeliveryZone(zone.zoneId!.toString());
+        showAlert("Zone deleted successfully!");
+        await fetchZones();
+      } catch (err) {
+        console.error(err);
+        showAlert("Failed to delete zone");
+      } finally {
+        setLoading(false);
+      }
+    });
   };
 
   const openEditForZone = (zone: DeliveryZone) => {
@@ -537,10 +644,12 @@ export default function DeliveryZonesAdmin() {
             )}
 
             <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-              <button onClick={fetchZones}
+              <button
+                onClick={fetchZones}
                 onMouseEnter={(e) => (e.currentTarget.style.background = "#e65c00")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "#FF6600")}
-                style={{ flex: 1, padding: 10, borderRadius: 8, background: "#FF6600", color: "#fff", border: "none" }}>
+                style={{ flex: 1, padding: 10, borderRadius: 8, background: "#FF6600", color: "#fff", border: "none" }}
+              >
                 Load Zones
               </button>
             </div>
@@ -657,166 +766,187 @@ export default function DeliveryZonesAdmin() {
 
       {/* Modal */}
       {showModal && (
-        <div style={{
-          position: "fixed", inset: 0, display: "flex", justifyContent: "center", alignItems: "center",
-          background: "rgba(0,0,0,0.35)", zIndex: 60
-        }}>
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            background: "rgba(0,0,0,0.35)",
+            zIndex: 60,
+          }}
+        >
           <div style={{ width: 680, maxHeight: "85vh", overflowY: "auto", background: "#fff", borderRadius: 10, padding: 18 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h3 style={{ margin: 0 }}>{editingPlacemarkIndex != null ? "Review Placemark" : (parsedPlacemarks.length ? "Imported Placemarks" : (editingZoneId != null ? "Edit Zone" : "Add Zone"))}</h3>
-              <button onClick={() => { setShowModal(false); setEditingPlacemarkIndex(null); setEditingZoneId(null); }} style={{ border: "none", background: "transparent", cursor: "pointer" }}>Close</button>
+              <h3 style={{ margin: 0 }}>{editingPlacemarkIndex != null ? "Review Placemark" : parsedPlacemarks.length ? "Imported Placemarks" : editingZoneId != null ? "Edit Zone" : "Add Zone"}</h3>
+              <button
+                onClick={() => {
+                  setShowModal(false);
+                  setEditingPlacemarkIndex(null);
+                  setEditingZoneId(null);
+                }}
+                style={{ border: "none", background: "transparent", cursor: "pointer" }}
+              >
+                Close
+              </button>
             </div>
 
             {/* Compact imported list */}
             {parsedPlacemarks.length > 0 && editingPlacemarkIndex == null && (
-  <div style={{ marginTop: 12, position: "relative" }}>
-    {/* card that holds the list; add bottom padding so absolute buttons don't overlap content */}
-    <div style={{
-      padding: 14,
-      borderRadius: 10,
-      background: "#fff",
-      border: "1px solid #f3f6f9",
-      boxShadow: "0 4px 10px rgba(12,18,28,0.03)",
-      maxHeight: 420,
-      overflowY: "auto",
-      paddingBottom: 64 // leave space for bottom-right buttons
-    }}>
-      <div style={{ marginBottom: 12, color: "#222", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <strong style={{ fontSize: 15 }}>Imported Placemarks ({parsedPlacemarks.length})</strong>
-        {/* small helper text */}
-        <span style={{ fontSize: 12, color: "#888" }}>Review or import</span>
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {parsedPlacemarks.map((pm, idx) => {
-          const pd = pm.parsedDescription || {};
-          return (
-            <div key={idx} style={{
-              padding: 12,
-              borderRadius: 10,
-              background: "#fbfdff",
-              border: "1px solid #eef6fb",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "flex-start",
-              gap: 12
-            }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 15, color: "#0b2540" }}>
-                  {pd.zoneName ?? pm.name ?? `Placemark ${idx + 1}`}
-                </div>
-
-                {/* CLEANED KEY/VALUE CHIPS */}
-                <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {/* chip factory */}
-                  {[
-                    { k: "baseDeliveryFee", v: pd.baseDeliveryFee },
-                    { k: "perMileFee", v: pd.perMileFee },
-                    { k: "minOrderAmount", v: pd.minOrderAmount },
-                    { k: "isRestricted", v: pd.isRestricted ?? false }
-                  ].map(item => (
-                    <div key={item.k} style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 6,
-                      padding: "6px 10px",
-                      background: "#ffffff",
-                      border: "1px solid #eef3f7",
-                      borderRadius: 999,
-                      boxShadow: "0 1px 0 rgba(16,24,40,0.02)",
-                      fontSize: 13,
-                      color: "#334155",
-                      minHeight: 30
-                    }}>
-                      <strong style={{ fontWeight: 600, fontSize: 12, color: "#0b2540" }}>{labelForKey(item.k)}:</strong>
-                      <span style={{ fontWeight: 600 }}>{formatValueForKey(item.k, item.v ?? "-")}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* action buttons for each placemark */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <button
-                  onClick={() => reviewPlacemark(pm, idx)}
+              <div style={{ marginTop: 12, position: "relative" }}>
+                {/* card that holds the list; add bottom padding so absolute buttons don't overlap content */}
+                <div
                   style={{
-                    padding: "6px 10px",
-                    borderRadius: 8,
-                    background: "#eef6ff",
-                    border: "1px solid #e6f0ff",
-                    cursor: "pointer",
-                    fontWeight: 600,
+                    padding: 14,
+                    borderRadius: 10,
+                    background: "#fff",
+                    border: "1px solid #f3f6f9",
+                    boxShadow: "0 4px 10px rgba(12,18,28,0.03)",
+                    maxHeight: 420,
+                    overflowY: "auto",
+                    paddingBottom: 64, // leave space for bottom-right buttons
                   }}
                 >
-                  Review
-                </button>
+                  <div style={{ marginBottom: 12, color: "#222", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <strong style={{ fontSize: 15 }}>Imported Placemarks ({parsedPlacemarks.length})</strong>
+                    {/* small helper text */}
+                    <span style={{ fontSize: 12, color: "#888" }}>Review or import</span>
+                  </div>
 
-                <button
-                  onClick={() => createFromPlacemark(pm, idx)}
-                  disabled={uploadingIndex === idx}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {parsedPlacemarks.map((pm, idx) => {
+                      const pd = pm.parsedDescription || {};
+                      return (
+                        <div
+                          key={idx}
+                          style={{
+                            padding: 12,
+                            borderRadius: 10,
+                            background: "#fbfdff",
+                            border: "1px solid #eef6fb",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "flex-start",
+                            gap: 12,
+                          }}
+                        >
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 700, fontSize: 15, color: "#0b2540" }}>{pd.zoneName ?? pm.name ?? `Placemark ${idx + 1}`}</div>
+
+                            {/* CLEANED KEY/VALUE CHIPS */}
+                            <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                              {/* chip factory */}
+                              {[
+                                { k: "baseDeliveryFee", v: pd.baseDeliveryFee },
+                                { k: "perMileFee", v: pd.perMileFee },
+                                { k: "minOrderAmount", v: pd.minOrderAmount },
+                                { k: "isRestricted", v: pd.isRestricted ?? false },
+                              ].map((item) => (
+                                <div
+                                  key={item.k}
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 6,
+                                    padding: "6px 10px",
+                                    background: "#ffffff",
+                                    border: "1px solid #eef3f7",
+                                    borderRadius: 999,
+                                    boxShadow: "0 1px 0 rgba(16,24,40,0.02)",
+                                    fontSize: 13,
+                                    color: "#334155",
+                                    minHeight: 30,
+                                  }}
+                                >
+                                  <strong style={{ fontWeight: 600, fontSize: 12, color: "#0b2540" }}>{labelForKey(item.k)}:</strong>
+                                  <span style={{ fontWeight: 600 }}>{formatValueForKey(item.k, item.v ?? "-")}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* action buttons for each placemark */}
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            <button
+                              onClick={() => reviewPlacemark(pm, idx)}
+                              style={{
+                                padding: "6px 10px",
+                                borderRadius: 8,
+                                background: "#eef6ff",
+                                border: "1px solid #e6f0ff",
+                                cursor: "pointer",
+                                fontWeight: 600,
+                              }}
+                            >
+                              Review
+                            </button>
+
+                            <button
+                              onClick={() => createFromPlacemark(pm, idx)}
+                              disabled={uploadingIndex === idx}
+                              style={{
+                                padding: "6px 10px",
+                                borderRadius: 8,
+                                background: "#e6ffef",
+                                border: "1px solid #dff5e8",
+                                cursor: uploadingIndex === idx ? "not-allowed" : "pointer",
+                                fontWeight: 600,
+                              }}
+                            >
+                              {uploadingIndex === idx ? "Creating..." : "Create"}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div
                   style={{
-                    padding: "6px 10px",
-                    borderRadius: 8,
-                    background: "#e6ffef",
-                    border: "1px solid #dff5e8",
-                    cursor: uploadingIndex === idx ? "not-allowed" : "pointer",
-                    fontWeight: 600,
+                    position: "absolute",
+                    right: 8,
+                    bottom: 4,
+                    display: "flex",
+                    gap: 8,
+                    alignItems: "center",
+                    justifyContent: "flex-end",
                   }}
                 >
-                  {uploadingIndex === idx ? "Creating..." : "Create"}
-                </button>
+                  <button
+                    onClick={() => setParsedPlacemarks([])}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      background: "#fff",
+                      border: "1px solid #e6eef7",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Clear
+                  </button>
+
+                  <button
+                    onClick={createAllPlacemarks}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      background: "#FF6600",
+                      color: "#fff",
+                      border: "none",
+                      cursor: "pointer",
+                      boxShadow: "0 6px 18px rgba(255,102,0,0.14)",
+                    }}
+                  >
+                    Create All
+                  </button>
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
+            )}
 
-    <div style={{
-      position: "absolute",
-      right: 8,
-      bottom: 4,
-      display: "flex",
-      gap: 8,
-      alignItems: "center",
-      justifyContent: "flex-end"
-    }}>
-      <button
-        onClick={() => setParsedPlacemarks([])}
-        style={{
-          padding: "8px 12px",
-          borderRadius: 8,
-          background: "#fff",
-          border: "1px solid #e6eef7",
-          cursor: "pointer",
-        }}
-      >
-        Clear
-      </button>
-
-      <button
-        onClick={createAllPlacemarks}
-        style={{
-          padding: "8px 12px",
-          borderRadius: 8,
-          background: "#FF6600",
-          color: "#fff",
-          border: "none",
-          cursor: "pointer",
-          boxShadow: "0 6px 18px rgba(255,102,0,0.14)",
-        }}
-      >
-        Create All
-      </button>
-    </div>
-  </div>
-)}
-
-
-            {/* Manual form: visible when editing a placemark, editing existing zone, or when no parsed list */}
             {(editingPlacemarkIndex != null || parsedPlacemarks.length === 0 || editingZoneId != null) && (
               <>
-                {/* small header when editing a parsed placemark */}
                 {editingPlacemarkIndex != null && parsedPlacemarks[editingPlacemarkIndex] && (
                   <div style={{ marginTop: 12, padding: 10, borderRadius: 8, background: "#fbfbff", border: "1px solid #eef2ff" }}>
                     <div style={{ fontWeight: 700 }}>{parsedPlacemarks[editingPlacemarkIndex].parsedDescription?.zoneName ?? parsedPlacemarks[editingPlacemarkIndex].name}</div>
@@ -867,32 +997,65 @@ export default function DeliveryZonesAdmin() {
                   <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
                     {form.coordinates.map((coord, idx) => (
                       <div key={idx} style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        <input type="number" value={coord[0]} onChange={(e) => {
-                          const copy = [...form.coordinates];
-                          copy[idx] = [Number(e.target.value), copy[idx][1]];
-                          setForm({ ...form, coordinates: copy });
-                        }} style={{ padding: 8, width: 140, borderRadius: 6, border: "1px solid #eee" }} />
-                        <input type="number" value={coord[1]} onChange={(e) => {
-                          const copy = [...form.coordinates];
-                          copy[idx] = [copy[idx][0], Number(e.target.value)];
-                          setForm({ ...form, coordinates: copy });
-                        }} style={{ padding: 8, width: 140, borderRadius: 6, border: "1px solid #eee" }} />
-                        <button onClick={() => {
-                          setForm({ ...form, coordinates: form.coordinates.filter((_, i) => i !== idx) });
-                        }} style={{ padding: 8, borderRadius: 6, background: "#ffefef", border: "none", cursor: "pointer" }}>Remove</button>
+                        <input
+                          type="number"
+                          value={coord[0]}
+                          onChange={(e) => {
+                            const copy = [...form.coordinates];
+                            copy[idx] = [Number(e.target.value), copy[idx][1]];
+                            setForm({ ...form, coordinates: copy });
+                          }}
+                          style={{ padding: 8, width: 140, borderRadius: 6, border: "1px solid #eee" }}
+                        />
+                        <input
+                          type="number"
+                          value={coord[1]}
+                          onChange={(e) => {
+                            const copy = [...form.coordinates];
+                            copy[idx] = [copy[idx][0], Number(e.target.value)];
+                            setForm({ ...form, coordinates: copy });
+                          }}
+                          style={{ padding: 8, width: 140, borderRadius: 6, border: "1px solid #eee" }}
+                        />
+                        <button
+                          onClick={() => {
+                            setForm({ ...form, coordinates: form.coordinates.filter((_, i) => i !== idx) });
+                          }}
+                          style={{ padding: 8, borderRadius: 6, background: "#ffefef", border: "none", cursor: "pointer" }}
+                        >
+                          Remove
+                        </button>
                       </div>
                     ))}
                   </div>
                   <div style={{ marginTop: 8 }}>
-                    <button onClick={() => setForm({ ...form, coordinates: [...form.coordinates, [0, 0]] })} style={{ padding: 10, borderRadius: 8, background: "#eef6ff", border: "none", cursor: "pointer" }}>Add coordinate</button>
+                    <button onClick={() => setForm({ ...form, coordinates: [...form.coordinates, [0, 0]] })} style={{ padding: 10, borderRadius: 8, background: "#eef6ff", border: "none", cursor: "pointer" }}>
+                      Add coordinate
+                    </button>
                   </div>
                 </div>
 
                 <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end", gap: 8 }}>
                   {editingPlacemarkIndex != null && (
-                    <button onClick={() => { setEditingPlacemarkIndex(null); /* keep parsed list */ }} style={{ padding: "8px 12px", borderRadius: 8, background: "#fff", border: "1px solid #eee" }}>Back</button>
+                    <button
+                      onClick={() => {
+                        setEditingPlacemarkIndex(null); /* keep parsed list */
+                      }}
+                      style={{ padding: "8px 12px", borderRadius: 8, background: "#fff", border: "1px solid #eee" }}
+                    >
+                      Back
+                    </button>
                   )}
-                  <button onClick={() => { setShowModal(false); setEditingPlacemarkIndex(null); setEditingZoneId(null); }} style={{ padding: "8px 12px", borderRadius: 8, background: "#fff", border: "1px solid #eee" }}>Cancel</button>
+                  <button
+                    onClick={() => {
+                      setShowModal(false);
+                      setEditingPlacemarkIndex(null);
+                      setEditingZoneId(null);
+                    }}
+                    style={{ padding: "8px 12px", borderRadius: 8, background: "#fff", border: "1px solid #eee" }}
+                  >
+                    Cancel
+                  </button>
                   <button onClick={handleSubmit} style={{ padding: "8px 12px", borderRadius: 8, background: "#FF6600", color: "#fff", border: "none" }}>
                     {editingZoneId != null ? "Update" : "Save"}
                   </button>
@@ -902,6 +1065,8 @@ export default function DeliveryZonesAdmin() {
           </div>
         </div>
       )}
+
+      <AlertDialog alert={customAlert} onClose={closeAlert} />
     </div>
   );
 }
