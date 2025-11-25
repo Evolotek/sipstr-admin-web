@@ -18,15 +18,13 @@ export default function MapPreviewGoogle({
   height = 520,
 }: MapPreviewGoogleProps) {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
-  console.log("apikey: ",apiKey);
-  // early guard — don't try to load the maps lib if there's no API key
   if (!apiKey) {
     return (
       <div style={{ height, display: "flex", alignItems: "center", justifyContent: "center", padding: 12, textAlign: "center" }}>
         <div>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>Google Maps API key missing</div>
           <div style={{ color: "#555", fontSize: 13 }}>
-            Set <code>NEXT_PUBLIC_GOOGLE_MAPS_KEY</code> in your environment (.env.local) and restart the dev server.
+            Configuration expected.
           </div>
         </div>
       </div>
