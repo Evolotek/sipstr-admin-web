@@ -24,7 +24,9 @@ const ALL_MODULES = [
   { id: "top-picks", label: "Top Picks", icon: "🌟", flagKey: "topPicks" },
   { id: "zones", label: "Zones", icon: "🗺️", flagKey: "zones" },
   { id: "reports", label: "Reports", icon: "📈", flagKey: "reports" },
-  { id: "substitute", label: "Substitute", icon: "📈", flagKey: "substitute" }
+  { id: "substitute", label: "Substitute", icon: "📈", flagKey: "substitute" },
+  { id: "audit-logs", label: "Audit Logs", icon: "📝", flagKey: "audit" },
+
 ]
 
 /**
@@ -44,6 +46,7 @@ const FEATURE_FLAGS = {
   zones: process.env.NEXT_PUBLIC_FEATURE_ZONES === "true",
   reports: process.env.NEXT_PUBLIC_FEATURE_REPORTS === "true",
   substitute: process.env.NEXT_PUBLIC_FEATURE_SUBSTITUTE === "true",
+  audit: process.env.NEXT_PUBLIC_FEATURE_AUDIT === "true",
 }
 
 export function Sidebar({ activeModule, onModuleChange, isOpen, onToggle, session, onLogout }: SidebarProps) {

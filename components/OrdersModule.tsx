@@ -536,14 +536,12 @@ export function OrdersModule() {
     } finally { setLoading(false); }
   }, [isOnline]);
 
-  // When user clicks action from landing (start flow) -> go to list with defaults (limit=45, status=CREATED)
   const handleStartFetch = (type: RefundType) => {
     setLimit(45);
     setStatusFilter(["CREATED"]);
     fetchRecentOrders(type, 45, ["CREATED"]);
   };
 
-  // Auto-refetch while on list view when filters change (debounced)
   useEffect(() => {
     if (view !== 'list' || !pendingRefundType) return;
     fetchRecentOrders(pendingRefundType, debouncedLimit, debouncedStatus);

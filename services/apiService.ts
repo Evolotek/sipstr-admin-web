@@ -2,7 +2,7 @@
 import { apiCall, setToken,setRefreshToken,clearToken } from "./api";
 import { Product, PackageUnit, Role, TopPick, User, Store, StoreItemDTO, StoreReportItemDTO, PageResponse,
   OfferDetailRequest, OfferDetailResponse, Order, LoginResponse, Brand, DeliveryZone, Category,ProductVariant,
-  RecentOrder, SubstitutionRequest, GroupedStoreInventoryResponseDTO
+  RecentOrder, SubstitutionRequest, GroupedStoreInventoryResponseDTO, AuditLog
  } from "./types";
 
 // --- API Service ---
@@ -94,8 +94,6 @@ export const apiService = {
         } as RecentOrder;
       });
   },
-
-
 
 
   // --- Products ---
@@ -332,4 +330,12 @@ getReports: async (
       `/stores-inventory/${storeUuid}/products${qs}`
     );
   },
+
+// Fetch audit logs by date range (admin endpoint already present on backend)
+  getAuditLogsByDateRange: async (startIso: string, endIso: string): Promise<AuditLog[]> => {
+    const qs = `?start=${encodeURIComponent(startIso)}&end=${encodeURIComponent(endIso)}`;
+    // backend returns an array of AuditLog objects
+    return apiCall<AuditLog[]>("GET", `/api/audit-logs/date-range${qs}`);
+  },
+
 };
