@@ -2,7 +2,7 @@
 import { apiCall, setToken,setRefreshToken,clearToken } from "./api";
 import { Product, PackageUnit, Role, TopPick, User, Store, StoreItemDTO, StoreReportItemDTO, PageResponse,
   OfferDetailRequest, OfferDetailResponse, Order, LoginResponse, Brand, DeliveryZone, Category,ProductVariant,
-  RecentOrder, SubstitutionRequest, GroupedStoreInventoryResponseDTO
+  RecentOrder, SubstitutionRequest, GroupedStoreInventoryResponseDTO, StoreCancelReasonRequestDTO, StoreCancelReasonResponseDTO, AuditLog
  } from "./types";
 
 // --- API Service ---
@@ -332,4 +332,29 @@ getReports: async (
       `/stores-inventory/${storeUuid}/products${qs}`
     );
   },
+
+  // --- Store Cancel Reasons ---
+  getCancelReasons: async (): Promise<StoreCancelReasonResponseDTO[]> =>
+    apiCall<StoreCancelReasonResponseDTO[]>("GET", "/reasons"),
+
+  getCancelReason: async (id: number): Promise<StoreCancelReasonResponseDTO> =>
+    apiCall<StoreCancelReasonResponseDTO>("GET", `/reasons/${id}`),
+
+  createCancelReason: async (data: StoreCancelReasonRequestDTO): Promise<StoreCancelReasonResponseDTO> =>
+    apiCall<StoreCancelReasonResponseDTO>("POST", "/reasons", data),
+
+  updateCancelReason: async (id: number, data: StoreCancelReasonRequestDTO): Promise<StoreCancelReasonResponseDTO> =>
+    apiCall<StoreCancelReasonResponseDTO>("PATCH", `/reasons/${id}`, data),
+
+  deleteCancelReason: async (id: number): Promise<void> =>
+    apiCall<void>("DELETE", `/reasons/${id}`),
+
+
+  // Fetch audit logs by date range (admin endpoint already present on backend)
+  getAuditLogsByDateRange: async (startIso: string, endIso: string): Promise<AuditLog[]> => {
+    const qs = `?start=${encodeURIComponent(startIso)}&end=${encodeURIComponent(endIso)}`;
+    // backend returns an array of AuditLog objects
+    return apiCall<AuditLog[]>("GET", `/api/audit-logs/date-range${qs}`);
+  },
+
 };

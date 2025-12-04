@@ -15,6 +15,8 @@ import{ TopPicksModule }from "./TopPicksModule"
 import{ ReportsModule }from "./ReportsModule"
 import DeliveryZonesPage from "./Delivery"
 import { SubstituteModule } from "./SubstituteModule"
+import { ReasonsModule } from "./ReasonsModule"
+import { AuditLogsModule } from "./AuditLogsModule"
 
 interface DashboardLayoutProps {
   session: AdminSession
@@ -34,6 +36,8 @@ type ModuleType =
   | "top-picks"
   | "reports"
   |  "zones"
+  | "reasons"
+  | "audit-logs";
 
 export function DashboardLayout({ session, onLogout }: DashboardLayoutProps) {
   const [activeModule, setActiveModule] = useState<ModuleType>("dashboard")
@@ -43,6 +47,8 @@ export function DashboardLayout({ session, onLogout }: DashboardLayoutProps) {
     switch (activeModule) {
       case "users":
         return <UsersModule />
+      case "reasons":
+        return <ReasonsModule />
       case "substitute":
         return <SubstituteModule />
       case "orders":
@@ -63,6 +69,8 @@ export function DashboardLayout({ session, onLogout }: DashboardLayoutProps) {
         return <TopPicksModule />
       case "reports":
         return <ReportsModule />
+      case "audit-logs":
+        return <AuditLogsModule />;
       default:
         return <DashboardHome />
     }
