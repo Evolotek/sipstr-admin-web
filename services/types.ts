@@ -159,7 +159,6 @@ export interface CreateDeliveryZoneRequest {
 }
 
 
-
 export interface StoreItemDTO {
   storeUuid: string
   storeName: string
@@ -173,6 +172,7 @@ export interface StoreItemDTO {
     quantity: number
     price: number
     finalPrice: number
+    isRefunded: boolean
     status: string
   }[]
 }
