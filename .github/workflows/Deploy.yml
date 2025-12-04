@@ -122,6 +122,29 @@ jobs:
 
       - name: Install Dependencies
         run: npm ci
+      
+      - name: Export Next.js Environment Variables
+        run: |
+          echo "NEXT_PUBLIC_BASE_URL=${{ vars.NEXT_PUBLIC_BASE_URL }}" >> $GITHUB_ENV
+          echo "NEXT_PUBLIC_ROLE=${{ vars.NEXT_PUBLIC_ROLE }}" >> $GITHUB_ENV
+
+          echo "NEXT_PUBLIC_FEATURE_DASHBOARD=${{ vars.NEXT_PUBLIC_FEATURE_DASHBOARD }}" >> $GITHUB_ENV
+          echo "NEXT_PUBLIC_FEATURE_USERS=${{ vars.NEXT_PUBLIC_FEATURE_USERS }}" >> $GITHUB_ENV
+          echo "NEXT_PUBLIC_FEATURE_ROLES=${{ vars.NEXT_PUBLIC_FEATURE_ROLES }}" >> $GITHUB_ENV
+          echo "NEXT_PUBLIC_FEATURE_BRANDS=${{ vars.NEXT_PUBLIC_FEATURE_BRANDS }}" >> $GITHUB_ENV
+          echo "NEXT_PUBLIC_FEATURE_PRODUCTS=${{ vars.NEXT_PUBLIC_FEATURE_PRODUCTS }}" >> $GITHUB_ENV
+          echo "NEXT_PUBLIC_FEATURE_STORES=${{ vars.NEXT_PUBLIC_FEATURE_STORES }}" >> $GITHUB_ENV
+          echo "NEXT_PUBLIC_FEATURE_ORDERS=${{ vars.NEXT_PUBLIC_FEATURE_ORDERS }}" >> $GITHUB_ENV
+          echo "NEXT_PUBLIC_FEATURE_COUPON=${{ vars.NEXT_PUBLIC_FEATURE_COUPON }}" >> $GITHUB_ENV
+          echo "NEXT_PUBLIC_FEATURE_TOP_PICKS=${{ vars.NEXT_PUBLIC_FEATURE_TOP_PICKS }}" >> $GITHUB_ENV
+          echo "NEXT_PUBLIC_FEATURE_ZONES=${{ vars.NEXT_PUBLIC_FEATURE_ZONES }}" >> $GITHUB_ENV
+          echo "NEXT_PUBLIC_FEATURE_REPORTS=${{ vars.NEXT_PUBLIC_FEATURE_REPORTS }}" >> $GITHUB_ENV
+          echo "NEXT_PUBLIC_FEATURE_SUBSTITUTE=${{ vars.NEXT_PUBLIC_FEATURE_SUBSTITUTE }}" >> $GITHUB_ENV
+          echo "NEXT_PUBLIC_FEATURE_AUDIT=${{ vars.NEXT_PUBLIC_FEATURE_AUDIT }}" >> $GITHUB_ENV
+          echo "NEXT_PUBLIC_FEATURE_REASONS=${{ vars.NEXT_PUBLIC_FEATURE_REASONS }}" >> $GITHUB_ENV
+
+          echo "NEXT_PUBLIC_GOOGLE_MAPS_KEY=${{ secrets.NEXT_PUBLIC_GOOGLE_MAPS_KEY }}" >> $GITHUB_ENV
+
 
       - name: Build Frontend
         run: npm run build
